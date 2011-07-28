@@ -85,7 +85,8 @@ int insert_graph(FILE *fp) {
     process_input(fp);
   total = print_vertices(fp);
   printf("Total number of vertices: %d\n",total);
-
+  if (INPUT)
+    hashtbl_destroy(input);
   for (i = 0; i < *count; i++) {
     if (graph[i])
       hashtbl_destroy(graph[i]);
@@ -271,7 +272,7 @@ void process_input(FILE *fp) {
   HASHTBL *halfbrac;
   FILE *file;
   char temp[100],tmp[ARRAYSIZE],*profile,*fullprofile,*diff;
-  int i,j,k,id,*longest,last;
+  int i,j,k,id,*longest,last,lastprob;
   int numhelix = 0,fullnum = 0,size = INIT_SIZE,size2 = INIT_SIZE,size3 = INIT_SIZE;
 
   if (!(halfbrac = hashtbl_create(HASHSIZE,NULL))) {
@@ -284,10 +285,10 @@ void process_input(FILE *fp) {
   }
   longest = hashtbl_get(max,"longest");
   profile = malloc(sizeof(char)*ARRAYSIZE*size);
-  profile[0] = '\0';
   fullprofile = malloc(sizeof(char)*ARRAYSIZE*size2);
-  fullprofile[0] = '\0';
   diff = malloc(sizeof(char)*ARRAYSIZE*size3);
+  profile[0] = '\0';
+  fullprofile[0] = '\0';
   diff[0] = '\0';
   if (!(file = fopen(INPUT,"r")))
     fprintf(stderr,"Cannot open %s\n",INPUT);
@@ -322,91 +323,77 @@ void process_input(FILE *fp) {
 	printf("helix %d %d %d doesn't exist/duplicates\n",i,j,k);
       make_brackets(halfbrac,i,j,id);
     }
-    else if (sscanf(temp,"Structure %d",&i) == 1) {
-      if (strlen(fullprofile) == 0) continue;
-      //printf("profile is %s, fullprofile %s with diff %s\n\n",profile,fullprofile,diff);
-      halfbrac = process_input_profile(fp,halfbrac,fullprofile,fullnum,profile,numhelix,diff);
+    else if (sscanf(temp,"Structure %d (%d)",&i,&j) == 2) {
+      if (strlen(fullprofile) == 0) {
+	lastprob = j;
+	continue;
+      } 
+      printf("profile is %s, fullprofile %s with diff %s\n\n",profile,fullprofile,diff);
+      halfbrac = process_input_profile(fp,halfbrac,fullprofile,fullnum,profile,numhelix,diff,lastprob);
       numhelix = 0;
-      profile[0] = '\0';
       fullnum = 0;
+      profile[0] = '\0';
       fullprofile[0] = '\0';
       diff[0] = '\0';
-      //prev = NULL;
-      //begin = NULL;
+      lastprob = j;
     }
   }
   //printf("input profile is %s with fullprofile %s and diff %s\n",profile,fullprofile,diff);
-  halfbrac = process_input_profile(fp,halfbrac,fullprofile,fullnum,profile,numhelix,diff);
+  halfbrac = process_input_profile(fp,halfbrac,fullprofile,fullnum,profile,numhelix,diff,lastprob);
   free(profile);
   hashtbl_destroy(halfbrac);
 
   //finds edges between centroids
   find_centroid_edges(fp);
-  hashtbl_destroy(input);
+
 }
 
 //takes input helix and checks if in graph
 //if so, changes node shape to hexagon
 //if not, insert new vertex
-HASHTBL* process_input_profile(FILE *fp,HASHTBL *brac,char *fullprofile, int fullnum,char *profile,int numhelix, char *diff) {
+HASHTBL* process_input_profile(FILE *fp,HASHTBL *brac,char *fullprofile, int fullnum,char *profile,int numhelix, char *diff, int prob) {
   HASHTBL *hash, *temp=NULL;
-  char *diff1,*bracket;
-  int *val,i,k1=0,k2=0;
+  char *diff1,*bracket,*difftrip;
+  int *val,k1=0,k2=0;
   KEY *parent,*next;
-  //  int size = INIT_SIZE;
-  //  char *copy = mystrdup(val);
-  i = fullnum-1;
-  if (fullnum > graphsize)
-    i = graphsize;
-  if (!(hash = graph[i])) {
-    if (!(hash = hashtbl_create(HASHSIZE,NULL))) {
-      fprintf(stderr, "ERROR: hashtbl_create() for input failed");
-      exit(EXIT_FAILURE);
-    }
-    graph[i] = hash;
-  }
-  make_bracket_rep(brac,fullprofile);
-  //printf("2sorted profile is %s with fullprofile %s and diff %s\n",profile,fullprofile,diff);
-  hashtbl_destroy(brac);
-  if (!(brac = hashtbl_create(HASHSIZE,NULL))) {
-    fprintf(stderr, "ERROR: hashtbl_create() failed");
-    exit(EXIT_FAILURE);
-  }
-  profile = sort_input(profile,numhelix);
-  printf("sorted profile is %s with fullprofile %s and diff %s\n",profile,fullprofile,diff);
-  //fullprofile = sort_input(fullprofile,numhelix);
 
   if (!(temp = hashtbl_create(HASHSIZE,NULL))) {
     fprintf(stderr, "ERROR: hashtbl_create() failed");
     exit(EXIT_FAILURE);
   }
+
+  make_bracket_rep(brac,fullprofile);
+  hashtbl_destroy(brac);
+  
+  profile = sort_input(profile,numhelix);
+  printf("sorted profile is %s with fullprofile %s and diff %s\n",profile,fullprofile,diff);
+
   if ((hash = graph[numhelix-1]) && (hashtbl_get(hash,profile))) {
     if (numhelix == fullnum) {
-      printf("case 1\n\n");
-      fprintf(fp,"\"%s\" [shape = hexagon];\n",profile);
-      hashtbl_destroy(temp);
-      return brac;    
-    }
+      printf("case 1\n");
+      fullprofile = sort_input(fullprofile,numhelix);
+    } else {
     //cannot use find_diff because fullprofile has helices not in table[]
-    puts("case 2");
-    diff = insert_diff(temp,diff);
-    bracket = edge_label(temp,profile,fullprofile,fullnum);
-    fprintf(fp,"\"%s\" [shape = hexagon];\n",fullprofile);
-    fprintf(fp,"\"%s\"-> \"%s\" [label =\" %s\\n%s \",fontsize=8,style = dotted];\n",profile,fullprofile,diff,bracket); 
+      puts("case 2");
+      diff = insert_diff(temp,diff);
+      bracket = edge_label(temp,profile,fullprofile,fullnum);      
+      fprintf(fp,"\"%s\"-> \"%s\" [label =\" %s\\n%s \",fontsize=8,style = dotted];\n",profile,fullprofile,diff,bracket); 
+    }
   }
-  else {      
+  else {          
     if (numhelix == fullnum)
       puts("case 3");
     else
       puts("case 4");
+    
     for (parent = find_parents(profile); parent; parent = next) {
-      fprintf(fp,"\"%s\" [shape = hexagon];\n",fullprofile);      
       diff1 = find_diff(temp,parent->data,profile,&k1,&k2);      
       if (numhelix != fullnum) {
-	diff = insert_diff(temp,diff);
-	diff1 = realloc(diff1,strlen(diff1)+strlen(diff)+4);
-	sprintf(diff1,"%s\\n%s",diff1,diff);
-	//printf("Diff is %s for parent %s of profile %s; diff %s for %s\n",diff1,parent->data,profile,diff,fullprofile);	
+	difftrip = insert_diff(temp,diff);
+	diff1 = realloc(diff1,strlen(diff1)+strlen(difftrip)+4);
+	printf("for parent %s, diff1 is now %s, diff is %s and difftrip is %s\n",parent->data,diff1,diff,difftrip);
+	sprintf(diff1,"%s\\n%s",diff1,difftrip);
+	printf("Diff is %s for parent %s of profile %s; diff %s for %s\n",diff1,parent->data,profile,difftrip,fullprofile);	
       }
       bracket = edge_label(temp,parent->data,fullprofile,fullnum);
       fprintf(fp,"\"%s\"-> \"%s\" [label =\" %s\\n%s \",fontsize=8,style = dotted];\n",parent->data,fullprofile,bracket,diff1); 
@@ -414,19 +401,18 @@ HASHTBL* process_input_profile(FILE *fp,HASHTBL *brac,char *fullprofile, int ful
       free(parent);
     }
   }
-  val = malloc(sizeof(int));
-  *val = 0;  
-  hash = graph[i];
-  //insert into graph with freq 0
-  hashtbl_insert(cluster,fullprofile,val);
-  val = malloc(sizeof(int));
-  *val = fullnum;
+  printf("%s has size %d and prob %d\n",fullprofile,fullnum,prob);
+  fprintf(fp,"\"%s\" [shape = hexagon];\n",fullprofile);
+  val = malloc(sizeof(int)*2);
+  val[0] = fullnum;
+  val[1] = prob;
   hashtbl_insert(input,fullprofile,val);
-  printf("inserting %s with val %d\n\n",fullprofile,*val);
-  //  hashtbl_insert(hash,fullprofile,zero); 
-  if (temp)
-    hashtbl_destroy(temp);
-  
+  hashtbl_destroy(temp);  
+
+  if (!(brac = hashtbl_create(HASHSIZE,NULL))) {
+    fprintf(stderr, "ERROR: hashtbl_create() failed");
+    exit(EXIT_FAILURE);
+  }
   return brac;
 }
 
@@ -441,7 +427,7 @@ KEY* find_parents(char *profile) {
   begin->data = "";
   begin->next = NULL;
   b2 = make_binary(profile,&num);
-  printf("finding parents for %s of length %d and binary %d\n",profile,num,b2);
+  //printf("finding parents for %s of length %d and binary %d\n",profile,num,b2);
   for (i = 0; i < num-1; i++) {
     if (!(hash = graph[i])) continue;
     for (node = hashtbl_getkeys(hash); node; node = node->next) {
@@ -449,7 +435,7 @@ KEY* find_parents(char *profile) {
       //printf("investigating %sof size %d with binary %d\n",node->data,i+1,b1);
       N = b1 & b2;
       if (N == b1) {
-	printf("found parent %sof size %d with binary %d\n",node->data,i+1,b1);
+	//printf("found parent %sof size %d with binary %d\n",node->data,i+1,b1);
 	parent = malloc(sizeof(KEY));
 	parent->data = node->data;
 	parent->next = begin;
@@ -469,9 +455,10 @@ char* insert_diff(HASHTBL *temp,char *diff) {
 
   if (strlen(diff) == 0) return "";
   copy = malloc(sizeof(char)*ARRAYSIZE*size);
+  copy[0] = '\0';
   for (k = strtok(diff,blank); k; k = strtok(NULL,blank)) {
     hashtbl_insert(temp,k,"1");
-    //printf("insert_diff: inserting %s into hash\n",k);
+    printf("insert_diff: inserting %s into hash\n",k);
     val = hashtbl_get(idhash,k);
     if (strlen(copy)+strlen(k)+strlen(val)+5 > ARRAYSIZE*size)
       copy = resize(&size,strlen(copy)+strlen(k)+strlen(val)+5,copy);	  
@@ -505,13 +492,17 @@ char* sort_input(char *profile,int length) {
 //inserts centroids into graph
 //finds and prints edges between them
 void find_centroid_edges(FILE *fp) {
-  int *i;
-  KEY *node,*next;
+  int *i,*zero;
+  KEY *node;
   HASHTBL *hash = NULL;
 
+  zero = malloc(sizeof(int));
+  *zero = 0;
   for (node = hashtbl_getkeys(input); node; node = node->next) {
     i = hashtbl_get(input,node->data);
-    printf("inserting %s into graph[%d]\n",node->data,*i);
+    if (*i-1 > graphsize)
+      *i = graphsize+1;
+    //printf("inserting %s into graph[%d]\n",node->data,*i-1);
     if (!(hash = graph[*i-1])) {
       if (!(hash = hashtbl_create(HASHSIZE,NULL))) {
 	fprintf(stderr, "ERROR: hashtbl_create() for input failed");
@@ -519,15 +510,13 @@ void find_centroid_edges(FILE *fp) {
       }
       graph[*i-1] = hash;
     }
-    i = hashtbl_get(cluster,node->data);
-    hashtbl_insert(hash,node->data,i);
-    
+    if (!hashtbl_get(hash,node->data))
+      hashtbl_insert(hash,node->data,zero);    
   }
-  
 }
 
 int print_vertices(FILE *fp) {
-  int i,*val,size = 5,total = 0,size2=INIT_SIZE,*frq = NULL,zero = 0,start;
+  int i,*val,size = 5,total = 0,size2=INIT_SIZE,*frq = NULL,zero = 0,start,end;
   char *rank,*v;;
   HASHTBL *hash;
   KEY *node = NULL;
@@ -540,21 +529,23 @@ int print_vertices(FILE *fp) {
     check_insert_edge(fp,"",node->data);
   //print ranks
   fputs("{ node [shape = plaintext]; ",fp);
-  for ( ; i < graphsize; i++) {
+  if (graph[graphsize])
+    end = graphsize;
+  else
+    end = graphsize-1;
+  for ( ; i <= end; i++) {
     fprintf(fp,"%d",i+1);
-    if (i == graphsize-1)
+    if (i == end)
       fprintf(fp,"; }\n");
     else
       fprintf(fp,"->");
   }
 
-  for (i = start; i <= graphsize; i++) {
+  for (i = start; i <= end; i++) {
     if (!(hash = graph[i])) continue;
+    //printf("printing level %d\n",i+1);
     node = hashtbl_getkeys(hash);
-    //if (total == 0 && hashtbl_numkeys(hash) == 1)
-    //fprintf(fp,"\"\"-> \"%s\"",hashtbl_get(hash,node->data)); 
-    if (i < graphsize)
-      sprintf(rank,"{ rank = same; %d;",i+1);
+    sprintf(rank,"{ rank = same; %d;",i+1);
     for (; node; node = node->next) {
       if (strlen(node->data)+ 4 > ARRAYSIZE*size2-1) {
 	v = resize(&size2,strlen(node->data)+5,v);
@@ -582,11 +573,12 @@ int print_vertices(FILE *fp) {
       fprintf(fp,"(%d/%d)",*frq,*val);
       if (*frq == most)
 	fprintf(fp,"**");
+      if (INPUT && (val = hashtbl_get(input,node->data)))
+	fprintf(fp,"\\n(%d)",val[1]);
       fprintf(fp,"\",style=filled,color=black,fillcolor=grey%d]\n",(1000-*frq)/20+49);
       //      fprintf(fp,"\"%s\" [shape = box, label = \"%s (%d)\"];\n",node->data,*val);
     }
-    if (i < graphsize)
-      fprintf(fp,"%s }\n",rank);
+    fprintf(fp,"%s }\n",rank);
     total += hashtbl_numkeys(hash);
     //v]0] = '\0';
   }
