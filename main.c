@@ -18,8 +18,10 @@ int VERBOSE;
 int THRESH_FREQ;
 int THRESH_COMMON;
 int NUMFREQ;
+int PRUNE;
 int NUMPROF;
 int NUMSTRUCTS;
+int STATS;
 
 int main(int argc, char *argv[]) {
   int i,total;
@@ -28,13 +30,15 @@ int main(int argc, char *argv[]) {
 
   OUTPUT = DEF_OUTPUT;
   INPUT = NULL;
-  FILTER = 1;
-  NUMFREQ = DEF_NUMFREQ;
-  NUMPROF = DEF_NUMPROF;
+  FILTER = 0;
+  PRUNE = 0;
   THRESH_FREQ = DEF_THRESH_FREQ;
   THRESH_COMMON = DEF_THRESH_COMMON;
   VERBOSE = 0;
+  NUMFREQ = 0;
+  NUMPROF = DEF_NUMPROF;
   NUMSTRUCTS = 0;
+  STATS = 0;
 
   if (argc < 2) {
     fprintf(stderr,"Not enough arguments\n");
@@ -50,6 +54,8 @@ int main(int argc, char *argv[]) {
 	NUMFREQ = atoi(argv[i+1]);
 	i++;
       }
+      else
+	NUMFREQ = DEF_NUMFREQ;
     }
     else if (!strcmp(argv[i],"-t")) {
       if ((i + 1 <= argc - 1) && sscanf(argv[i+1],"%d",&THRESH_FREQ)) {
@@ -72,6 +78,7 @@ int main(int argc, char *argv[]) {
       }
     }
     else if (!strcmp(argv[i],"-p")) {
+      PRUNE = 1;
       if ((i + 1 <= argc - 1) && sscanf(argv[i+1],"%d",&NUMPROF)) {
 	NUMPROF = atoi(argv[i+1]);
 	i++;
@@ -97,6 +104,8 @@ int main(int argc, char *argv[]) {
     }
     else if (!strcmp(argv[i],"-v"))
       VERBOSE = 1;
+    else if (!strcmp(argv[i],"-s"))
+      STATS = 1;
   }
   if (!(max = hashtbl_create(HASHSIZE,NULL))) {
     fprintf(stderr, "ERROR: hashtbl_create() failed");
@@ -133,7 +142,7 @@ int main(int argc, char *argv[]) {
 
   mostfreq = find_freq(total);
   printf("Total number of frequent helices: %d\n",hashtbl_numkeys(freq));
-  make_cluster(argv[1],mostfreq);
+  cluster = make_cluster(argv[1],mostfreq);
   
   if (VERBOSE) {
     fp = fopen("cluster.out","w");

@@ -28,6 +28,7 @@ extern char *OUTPUT;
 extern char *INPUT;
 //if filter is 1, keep number of freq helices under 10
 extern int FILTER; 
+//if 1, prints additional info
 extern int VERBOSE;
 //if freq > thresh_freq, is significant (in percentage)
 extern int THRESH_FREQ;
@@ -35,10 +36,14 @@ extern int THRESH_FREQ;
 extern int THRESH_COMMON;
 //limit to number of frequent helices
 extern int NUMFREQ;
+//whether to prune profiles to below NUMPROF
+extern int PRUNE;
 //limit to number of profiles made
 extern int NUMPROF;
 //number of structures processed; sfold generates 1000
 extern int NUMSTRUCTS;
+//makes triplet stats in process_structs
+extern int STATS;
 
 typedef struct linkedlist {
   int data;
@@ -61,6 +66,7 @@ int binsearch(char **mostfreq, char *key);
 void freq_insert(char *key,int marg,int length);
 //int make_graph(HASHTBL *marg, HASHTBL *max,HASHTBL *idhash,int total, char *name, FILE *fp);
 HASHTBL* make_cluster(char *name,char **mostfreq);
+int profcompare(const void *v1, const void *v2);
 char* process_profile(HASHTBL *halfbrac,char *profile,int numhelix,int *size,int *most);
 void make_brackets(HASHTBL *brac, int i, int j, int id);
 void make_bracket_rep(HASHTBL *brac,char *profile);
@@ -88,7 +94,7 @@ void make_key();
 struct hashnode_s* insert_LCAs(FILE *fp,char **profileID,int k);
 char* convert_binary(char *profile,int binary,int *count);
 void process_input(FILE *fp);
-HASHTBL* process_input_profile(FILE *fp,HASHTBL *brac,char *fullprofile, int fullnum,char *profile,int numhelix,char *diff);
+HASHTBL* process_input_profile(FILE *fp,HASHTBL *brac,char *fullprofile, int fullnum,char *profile,int numhelix,char *diff,int prob);
 KEY* find_parents(char *profile);
 char* insert_diff(HASHTBL *temp,char *diff);
 char* sort_input(char *profile,int length);
