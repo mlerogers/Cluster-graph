@@ -11,7 +11,7 @@
 //default total number of freq helices
 #define DEF_NUMFREQ 7
 //default maximum allowed profiles (computational reasons)
-#define DEF_NUMPROF 25
+#define DEF_NUMPROF 20
 //initial size of memory allocated = ARRAYSIZE * SIZE
 #define INIT_SIZE 2
 //default output file name

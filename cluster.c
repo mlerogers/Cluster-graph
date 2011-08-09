@@ -438,7 +438,7 @@ void freq_insert(char *key,int marg,int length) {
 HASHTBL* make_cluster(char *name,char **mostfreq) {
   FILE *fp;
   int num,id = 0,i,j,k,*longest=NULL,last = -1, iscommon = 0;
-  int *count=NULL,most=0,numhelix = 0,size=INIT_SIZE;
+  int *count=NULL,most=0,numhelix = 0,size=INIT_SIZE,notcommon = 0;
   char temp[100],val[ARRAYSIZE],*l=NULL,*profile=NULL,**prof;
   KEY *node = NULL;
   HASHTBL *halfbrac;
@@ -474,6 +474,7 @@ HASHTBL* make_cluster(char *name,char **mostfreq) {
       if (iscommon != hashtbl_numkeys(common)) {
 	if (VERBOSE) 
 	  printf("Found profile %snot having common helices\n",profile);
+	notcommon++;
       }
       else
 	profile = process_profile(halfbrac,profile,numhelix,&size,&most);
@@ -500,7 +501,7 @@ HASHTBL* make_cluster(char *name,char **mostfreq) {
 	if (l != NULL) {   //is a freq helix, so save
 	  numhelix++;
 	  if (strlen(profile)+strlen(val) > (ARRAYSIZE*size-2)) 
-	    profile = resize(&size,strlen(profile)+strlen(val)+1,profile);
+	    profile = resize(&size,strlen(profile)+strlen(val)+2,profile);
 	  //printf("adding %d to profile\n",id);
 	  strcat(profile,val);
 	  strcat(profile," ");
@@ -513,6 +514,7 @@ HASHTBL* make_cluster(char *name,char **mostfreq) {
   if (iscommon != hashtbl_numkeys(common)) {
     if (VERBOSE)
       printf("Found profile %snot having common helices\n",profile);
+    notcommon++;
   }
   else
     profile = process_profile(halfbrac,profile,numhelix,&size,&most);
@@ -524,32 +526,37 @@ HASHTBL* make_cluster(char *name,char **mostfreq) {
   else {
     j = hashtbl_numkeys(cluster);
     if (j > NUMPROF) {
-      if (VERBOSE)
+      //if (VERBOSE)
 	printf("Original number of profiles: %d\n",j);
       prof = malloc(sizeof(char*)*j);
       for (i = 0,node = hashtbl_getkeys(cluster); node; node = node->next)
-	prof[i++] = node->data;
+	prof[i++] = mystrdup(node->data);
       qsort(prof,j,sizeof(char*),profcompare);
       //for (k = 0; k < j; k++) 
       //printf("%s with freq %d\n",prof[k],*((int*)hashtbl_get(cluster,prof[k])));      
       num = 0;
       for (k = NUMPROF; k < j; k++) {
 	i = *((int*)hashtbl_get(cluster,prof[k]));
-	if (VERBOSE)
+	//if (VERBOSE)
 	  printf("removing %s with freq %d\n",prof[k],i);
 	num += i;
-	hashtbl_remove(cluster,prof[k]);
+	if (hashtbl_remove(cluster,prof[k]) == -1)
+	  fprintf(stderr,"Failed remove of %s in cluster\n",prof[k]);
       }
-      if (VERBOSE)
-	printf("Total number of structures without profile in top %d: %d\n",num,NUMPROF);
+      //if (VERBOSE)
+      printf("Total number of structures without profile in top %d: %d\n",NUMPROF,num);
+      for (i = 0; i < j; i++)
+	free(prof[i]);
+      free(prof);
     }
   }
+  printf("Number of structures without common helices: %d\n",notcommon);
   count = malloc(sizeof(int));
   *count = most;
   hashtbl_insert(cluster,"most",count);
   //printf("most is %d\n",*count);
+
   free(profile);
-  free(prof);
   return cluster;
 }
 

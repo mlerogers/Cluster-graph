@@ -78,7 +78,7 @@ int main(int argc, char *argv[]) {
       }
     }
     else if (!strcmp(argv[i],"-p")) {
-      PRUNE = 1;
+      //PRUNE = 1;
       if ((i + 1 <= argc - 1) && sscanf(argv[i+1],"%d",&NUMPROF)) {
 	NUMPROF = atoi(argv[i+1]);
 	i++;
@@ -130,7 +130,11 @@ int main(int argc, char *argv[]) {
   total = process_structs(argv[1]);
   if (VERBOSE) {
     printf("Threshold to find frequent helices: %d\%\n",THRESH_FREQ);
-    printf("Maximum number of frequent helices: %d\n",NUMFREQ);
+    printf("Maximum number of frequent helices: ");
+    if (NUMFREQ == 0)
+      puts("no limit");
+    else
+      printf("%d\n",NUMFREQ);
     printf("Maximum number of profiles: %d\n", NUMPROF);
     printf("Number of structures processed: %d\n",NUMSTRUCTS);
  }
@@ -143,7 +147,6 @@ int main(int argc, char *argv[]) {
   mostfreq = find_freq(total);
   printf("Total number of frequent helices: %d\n",hashtbl_numkeys(freq));
   cluster = make_cluster(argv[1],mostfreq);
-  
   if (VERBOSE) {
     fp = fopen("cluster.out","w");
     fprintf(fp,"Processing %s\n",argv[1]);
@@ -152,10 +155,13 @@ int main(int argc, char *argv[]) {
   }
   printf("Total number of clusters: %d\n",hashtbl_numkeys(cluster)-1);
   
+  
   fp = fopen(OUTPUT,"w");
   insert_graph(fp);  
   fputs("}",fp);
+  fclose(fp);
   
+
   hashtbl_destroy(max);
   hashtbl_destroy(marginals);
   hashtbl_destroy(idhash);
@@ -163,6 +169,6 @@ int main(int argc, char *argv[]) {
   hashtbl_destroy(freq);
   hashtbl_destroy(cluster);
   hashtbl_destroy(bracket);
-  fclose(fp);
+
   return 0;
 }

@@ -227,7 +227,7 @@ struct hashnode_s* insert_LCA(char *profile,int num,int s,int frq) {
     }
     free(key);
   } else if (*val < frq) {
-    //printf("profile %s inserted with freq %d, old freq %d\n\n",profile,frq,*val);
+    //printf("profile %s inserted with freq %d, old freq %d\n",profile,frq,*val);
     *val = frq;
   }
   return temp;

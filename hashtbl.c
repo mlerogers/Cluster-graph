@@ -156,12 +156,13 @@ int hashtbl_remove(HASHTBL *hashtbl, const char *key)
 			if(prevnode) prevnode->next=node->next;
 			else hashtbl->nodes[hash]=node->next;
 			free(node);
+			hashtbl->numkeys--;
 			return 0;
 		}
 		prevnode=node;
 		node=node->next;
 	}
-        hashtbl->numkeys--;
+
 	return -1;
 }
 
