@@ -12,18 +12,55 @@ Finds all freq helices and clusters 1000 structs based on them
 
 static HASHTBL *triplet;
 static HASHTBL *common;
-//static char *comm;
+static char *seq;
+
+/*
+Input: the fasta file sfold ran on. First line is description, rest of lines is sequence
+Does: Stores nucleotide at position i in array
+Used to find longest possible
+*/
+char* input_seq(char *seqfile) {
+FILE * fp;
+  int size = 5,over = 0;
+  char temp[100],*blank = " \n",*part,*final;
+
+  fp = fopen(seqfile,"r");
+  if (fp == NULL) {
+    fprintf(stderr, "can't open %s\n",seqfile);
+    return 0;
+  }
+  final = malloc(sizeof(char)*ARRAYSIZE*size);
+  final[0] = '\0';
+  while (fgets(temp,100,fp)) {    
+    //put error handling in case first line has more than 100 chars
+    if (!over) {
+      if (strlen(temp) < 99 || (strlen(temp) == 99 && temp[98] == '\n'))
+	over = 1;
+      //printf("first line %s with length %d\n",temp,strlen(temp));
+      continue;
+    }
+    for (part = strtok(temp,blank); part; part = strtok(NULL,blank)) {
+      if (strlen(final)+strlen(part) > ARRAYSIZE*size-1) {
+	while (++size*ARRAYSIZE - 1 < strlen(final)+strlen(part)) ;
+	final = realloc(final,ARRAYSIZE*size);
+      }
+      final = strcat(final,part);
+      //printf("adding %s\n", part);
+    }
+  }
+  printf("seq is %s\n",final);
+  return final;
+}
 
 /*
 name is the file name containing structures to process
-max is the hash of a hash: i->j->[k,id]
 marginals is the hash: id->frequency of id
 return idcount = num of helix equivalence classes + 1
 */
-int process_structs(char *name) {
+int process_structs(char *seqfile,char *name) {
   FILE *fp;
-  int i,j,k,helixid,idcount=1,m,n,o,longest=1,*lg,*id=NULL,last = 0;
-  char tmp[100],key[ARRAYSIZE],*val,dbl[ARRAYSIZE];
+  int i,j,k,*helixid,idcount=1,longest=1,*lg,*id=NULL,last = 0;
+  char tmp[100],key[ARRAYSIZE],dbl[ARRAYSIZE];
   HASHTBL *temp;
 
   fp = fopen(name,"r");
@@ -31,22 +68,23 @@ int process_structs(char *name) {
     fprintf(stderr, "can't open %s\n",name);
     return 0;
   }
+  seq = input_seq(seqfile);
   if (STATS)
     triplet = hashtbl_create(HASHSIZE,NULL);
+
   while (fgets(tmp,100,fp) != NULL) {
     if (sscanf(tmp,"%d %d %d",&i,&j,&k) == 3) {
-      //printf("%d %d %d\n",i,j,k);
       if (i == 0) continue;
-      if (longest < k) 
-	longest = k;
-      helixid = testwithin(i,j,k,longest);
-      //printf("id %d for %d %d %d\n",helixid,i,j,k);
-      if (helixid == -1) { 
-	insert(i,j,k,idcount);
-	insertid(i,j,k,idcount);
-	helixid = idcount++;
+      //if (longest < k) 
+      //longest = k;
+      sprintf(dbl,"%d %d",i,j);
+      helixid = hashtbl_get(bp,dbl);
+      //printf("%d %d %d\n",i,j,k);
+      if (!helixid) {
+	//printf("%s not found in bp\n",dbl);
+	longest_possible(i,j,k,idcount);
 	//increment marginal
-	sprintf(key,"%d",helixid);
+	sprintf(key,"%d",idcount++);
 	id = malloc(sizeof(int));
 	*id = 1;
 	hashtbl_insert(marginals,key,id);
@@ -59,20 +97,17 @@ int process_structs(char *name) {
 	  hashtbl_insert(temp,dbl,lg);
 	  hashtbl_insert(triplet,key,temp);
 	}
+	last = idcount - 1;
       }
       else {
 	//printf("Found %d %d with id %d\n",i,j,helixid);
-	sprintf(key,"%d",helixid);
-	val = hashtbl_get(idhash,key);
-	sscanf(val,"%d %d %d",&m,&n,&o);
-	if (m > i || (m == i && o < k) ) {
-	  //printf("replacing %d %d %d with %d %d %d\n",m,n,o,i,j,k);
-	  insertid(i,j,k,helixid);
-	}
+	sprintf(key,"%d",*helixid);
 	//increment marginal
-	if (last != helixid) {
+	if (last != *helixid) {
 	  id = hashtbl_get(marginals,key);
 	  ++*id;
+	} else {
+	  printf("Found repeat id %d\n",last);
 	}
 	//triplet stats
 	if (STATS) {
@@ -87,112 +122,76 @@ int process_structs(char *name) {
 	    hashtbl_insert(temp,dbl,lg);
 	  }
 	}
+	last = *helixid;
       }
-      last = helixid;
     }
     else if (sscanf(tmp,"Structure %d",&i) == 1)
       NUMSTRUCTS++;
   }
-  //hash doesn't alloc memory for vals, just for keys
+  /*
   lg = malloc(sizeof(int));
   *lg = longest;
-  hashtbl_insert(max,"longest",lg);
-  
+  hashtbl_insert(bp,"longest",lg);
+  */
+
   //  printf("\n");
   if (fclose(fp))
     fprintf(stderr, "File %s not closed successfully\n",name);
   return idcount;   //idcount augmented, so can use < in loops
 }
 
-//checks if a longer or shorter helix already exists with ID
-//if so, returns that ID
-//inserts itself into hash, so future lookups wont have to check
-int testwithin(int i, int j, int k,int longest) {
-  int *id,m;
-  if ((id = check(i,j)) != NULL) 
-    return id[1];
-  //puts("searching");
-  for (m = 1; m <= longest; m++) {
-    //if a shorter is found
-    //printf("checking for m = %d\n",m);
-    id = check(i+m,j-m);
-    if (id != NULL && k >= m) {
-      //      printf("Found shorter %d %d for %d %d\n",i+m,j-m,i,j);
-      insert(i,j,k,id[1]);
-      //insertid(i,j,k,id[1],idhash);
-      return id[1];
-    }
-    id = check(i-m,j+m);
-    //if a longer is found
-    if (id != NULL && id[0] > m) {
-      insert(i,j,k,id[1]);
-      return id[1];
-    }
+
+//finds longest possible helix based on i,j
+//populates all bp in longest possible with id in hash
+void longest_possible(int i,int j,int k,int id) {
+  int m = 1,*check,*num;
+  char val[ARRAYSIZE],key[ARRAYSIZE];
+
+  while (match(i+k,j-k)) k++;
+  //printf("k is now %d\n",k);
+  while (match(i-m,j+m)) m++;
+  m--;
+  //printf("m is now %d\n",m);
+
+  i -= m;
+  j += m;
+  k+= m;
+  sprintf(val,"%d %d %d",i,j,k);
+  sprintf(key,"%d",id);
+  hashtbl_insert(idhash,key,mystrdup(val));
+  //printf("inserting %s -> %s into idhash\n",key,val);
+
+  num = malloc(sizeof(int));
+  *num = id;
+
+  for (m = 0; m < k; m++) {
+    sprintf(val,"%d %d",i+m,j-m);
+    if ((check = hashtbl_get(bp,val)))
+      printf("%s (id %d) already has id %d\n",val,id,*check);
+
+    hashtbl_insert(bp,val,num);
+    //printf("inserting %s\n",val);
   }
-  return -1;
 }
 
-int* check (int i, int j) {
-  HASHTBL *hash;
-  char key[ARRAYSIZE],key2[ARRAYSIZE];
-  int *val;
-
-  sprintf(key,"%d",i);
-  sprintf(key2,"%d",j);
-  if ((hash = hashtbl_get(max,key)) != NULL) {
-    if ((val = hashtbl_get(hash,key2)) != NULL)
-      return val;
-  }
-  return NULL;
-}
-
-//This function populates hash with i->j->[k, idcount]
-int insert (int i, int j, int k, int idcount) {
-  char str[ARRAYSIZE], key[ARRAYSIZE];
-  int *val;
-  HASHTBL *tmp;
-  //inserting into max
-  val = malloc(sizeof(int)*2);
-  val[0] = k;
-  val[1] = idcount;
-  sprintf(key,"%d",i);
-  sprintf(str,"%d",j);
-  if ((tmp = hashtbl_get(max,key)) != NULL) {
-    hashtbl_insert(tmp,str,val);
-    //    printf("found %d %d inserting %d\n",i,j,val[1]);
-  }
-  else {
-    tmp = hashtbl_create(HASHSIZE,NULL);
-    hashtbl_insert(tmp,str,val);
-    hashtbl_insert(max,key,tmp);
-    //    printf("inserting %d %d %d with id: %d\n",i,j,k,val[1]);
-  }      
-  return 0;
-}
-
-//inserts into hash with idcount->"i j k" if it is the maximal helix
-//if found idcount in hash, assumes itself is larger and overwrites
-int insertid (int i, int j, int k, int idcount) {
-  char key[ARRAYSIZE], *get, *val;
-
-  sprintf(key,"%d",idcount);
-  if ((get = hashtbl_get(idhash,key)) != NULL) {
-    sprintf(get,"%d %d %d",i,j,k);
-    /*
-    strcpy(get,newval);
-    get = hashtbl_get(id,key);
-    printf("inserting %s for id %d\n",get,idcount);
-    */
-  }
-  else {
-    val = malloc(sizeof(char)*ARRAYSIZE);
-    sprintf(val,"%d %d %d",i,j,k);
-    hashtbl_insert(idhash,key,val);
-    //printf("inserting %s for id %d\n",val,idcount);
-  }
-  //  printf("inserting %d %d %d for id %d\n",i,j,k,idcount);
-
-  return 0;
+int match(int i,int j) {
+  char l,r;
+  if (i >= j) return 0;
+  if (i < 1) return 0;
+  if (j >= strlen(seq)) return 0;
+  l = seq[i-1];
+  r = seq[j-1];
+  //printf("l(%d) is %c and r(%d) is %c\n",i-1,l,j-1,r);
+  if ((l == 'a' || l == 'A') && (r == 'u' || r == 'U' || r == 't' || r == 'T'))
+    return 1;
+  else if ((l == 'u' || l == 'U' || l == 't' || l == 'T') && (r == 'a' || r == 'A' || r == 'g' || r == 'G'))
+    return 1;
+  else if ((l == 'c' || l == 'C') && (r == 'g' || r == 'G'))
+    return 1;
+  else if ((l == 'g' || l == 'G') && (r == 'c' || r == 'C' || r == 'u' || r == 'U' || r == 't' || r == 'T' ))
+    return 1;
+  else
+    return 0;
 }
 
 //looks up and prints actual helices for all id's
@@ -239,9 +238,9 @@ int print_all_helices(int total) {
 //finds all frequent helices > threshold and prints them out
 //inserts into hash with key = id, val = 1
 char** find_freq(int total) {
-  int *marg = NULL,i,count = 0,percent;
+  int *marg = NULL,i,count = 0,percent,h,j,k;
   double entropy;
-  char key[ARRAYSIZE],**mostfreq;
+  char key[ARRAYSIZE],**mostfreq,*val;
   KEY *node = NULL,*begin = NULL;
 
   if (!(freq = hashtbl_create(HASHSIZE,NULL))) {
@@ -256,6 +255,11 @@ char** find_freq(int total) {
     mostfreq = malloc(sizeof(char*)*NUMFREQ);
   for (i = 1; i < total; i++) {
     sprintf(key,"%d",i);
+    if (LENGTH) {
+      val = hashtbl_get(idhash,key);
+      sscanf(val,"%d %d %d",&h,&j,&k);
+      if (k < LENGTH) continue;
+    }
     marg = hashtbl_get(marginals,key);
     //entropy = calc_entropy(*marg);
     //if (VERBOSE)
@@ -437,15 +441,12 @@ void freq_insert(char *key,int marg,int length) {
 //hash cluster: key = (num helices) list of helices. val = freq
 HASHTBL* make_cluster(char *name,char **mostfreq) {
   FILE *fp;
-  int num,id = 0,i,j,k,*longest=NULL,last = -1, iscommon = 0;
+  int num=0,id = 0,i,j,k,last = -1, iscommon = 0,toosmall = 0;
   int *count=NULL,most=0,numhelix = 0,size=INIT_SIZE,notcommon = 0;
   char temp[100],val[ARRAYSIZE],*l=NULL,*profile=NULL,**prof;
   KEY *node = NULL;
   HASHTBL *halfbrac;
-  //KEY *node;
 
-  longest = hashtbl_get(max,"longest");
-  //  dup = malloc(sizeof(char)*ARRAYSIZE*size);
   profile = malloc(sizeof(char)*ARRAYSIZE*size);
   //printf("length of profile is %d\n",(int)strlen(profile));
   profile[0] = '\0';
@@ -489,8 +490,9 @@ HASHTBL* make_cluster(char *name,char **mostfreq) {
       profile[0] = '\0';
       iscommon = 0;
     }
-    else if (sscanf(temp,"%d%d%d",&i,&j,&k)!= EOF) {
-      id = testwithin(i,j,k,*longest);
+    else if (sscanf(temp,"%d %d %d",&i,&j,&k) == 3) {
+      sprintf(val,"%d %d",i,j);
+      id = *((int*) hashtbl_get(bp,val));
       if (id != -1 && id != last) {
 	sprintf(val,"%d",id);
 	if (hashtbl_get(common,val)) {
@@ -518,6 +520,26 @@ HASHTBL* make_cluster(char *name,char **mostfreq) {
   }
   else
     profile = process_profile(halfbrac,profile,numhelix,&size,&most);
+  printf("Original number of profiles before filtering: %d\n",hashtbl_numkeys(cluster));
+  if (PROF_FREQ) {
+    //if (VERBOSE)
+    //printf("Original number of profiles before filtering: %d\n",hashtbl_numkeys(cluster));
+    for (node = hashtbl_getkeys(cluster); node; node = node->next) {
+      count = hashtbl_get(cluster,node->data);
+      if (*((int*)hashtbl_get(cluster,node->data)) < PROF_FREQ) {
+	if (VERBOSE)
+	  printf("removing %s with freq %d\n",node->data,*count);
+	toosmall += *count;
+	if (hashtbl_remove(cluster,node->data) == -1) 
+	  fprintf(stderr,"Failed remove of %s in cluster\n",node->data);
+      }
+    }
+  }
+  if (VERBOSE) {
+    printf("Number of structs with infrequent profile: %d\n",toosmall);
+    printf("Number of profiles before pruning: %d\n",hashtbl_numkeys(cluster));
+  }
+  num = 0;
   if (PRUNE) {
     for (; hashtbl_numkeys(cluster) > NUMPROF; prune_profiles(mostfreq))
       if (VERBOSE)
@@ -526,8 +548,6 @@ HASHTBL* make_cluster(char *name,char **mostfreq) {
   else {
     j = hashtbl_numkeys(cluster);
     if (j > NUMPROF) {
-      //if (VERBOSE)
-	printf("Original number of profiles: %d\n",j);
       prof = malloc(sizeof(char*)*j);
       for (i = 0,node = hashtbl_getkeys(cluster); node; node = node->next)
 	prof[i++] = mystrdup(node->data);
@@ -537,20 +557,22 @@ HASHTBL* make_cluster(char *name,char **mostfreq) {
       num = 0;
       for (k = NUMPROF; k < j; k++) {
 	i = *((int*)hashtbl_get(cluster,prof[k]));
-	//if (VERBOSE)
+	if (VERBOSE)
 	  printf("removing %s with freq %d\n",prof[k],i);
 	num += i;
 	if (hashtbl_remove(cluster,prof[k]) == -1)
 	  fprintf(stderr,"Failed remove of %s in cluster\n",prof[k]);
       }
-      //if (VERBOSE)
-      printf("Total number of structures without profile in top %d: %d\n",NUMPROF,num);
+      if (VERBOSE)
+	printf("Total number of structures without profile in top %d: %d\n",NUMPROF,num);
       for (i = 0; i < j; i++)
 	free(prof[i]);
       free(prof);
     }
   }
-  printf("Number of structures without common helices: %d\n",notcommon);
+  if (VERBOSE)
+    printf("Number of structures without common helices: %d\n",notcommon);
+  printf("Total structures not represented in graph: %d\n",notcommon+toosmall+num);
   count = malloc(sizeof(int));
   *count = most;
   hashtbl_insert(cluster,"most",count);

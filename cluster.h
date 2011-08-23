@@ -5,7 +5,7 @@
 //size of char array holding helix id
 #define ARRAYSIZE 20
 //default frequency threshold in percentage
-#define DEF_THRESH_FREQ 4
+#define DEF_THRESH_FREQ 10
 //default frequency for a helix to be a given
 #define DEF_THRESH_COMMON 99
 //default total number of freq helices
@@ -17,7 +17,7 @@
 //default output file name
 #define DEF_OUTPUT "cluster.dot"
 
-extern HASHTBL *max;
+extern HASHTBL *bp;
 extern HASHTBL *marginals;
 extern HASHTBL *idhash;
 extern HASHTBL *freq;
@@ -32,7 +32,7 @@ extern int FILTER;
 extern int VERBOSE;
 //if freq > thresh_freq, is significant (in percentage)
 extern int THRESH_FREQ;
-//if freq > thresh_all, assume is in everything
+//if freq > thresh_common, assume is in everything
 extern int THRESH_COMMON;
 //limit to number of frequent helices
 extern int NUMFREQ;
@@ -40,8 +40,12 @@ extern int NUMFREQ;
 extern int PRUNE;
 //limit to number of profiles made
 extern int NUMPROF;
+//profiles must have freq at least PROF_FREQ
+extern int PROF_FREQ;
 //number of structures processed; sfold generates 1000
 extern int NUMSTRUCTS;
+//sets minimum length a freq helix must be
+extern int LENGTH;
 //makes triplet stats in process_structs
 extern int STATS;
 
@@ -51,12 +55,12 @@ typedef struct linkedlist {
 } LIST;
 
 //in cluster.c
-int process_structs(char *name);
-int testwithin(int i, int j, int k,int longest);
-int insert (int i, int j, int k, int idcount);
-int insertid (int i, int j, int k, int idcount);
-int* check (int i, int j);
+char* input_seq(char *seqfile);
+int process_structs(char *seqfile,char *name);
+void longest_possible(int i,int j,int k,int id);
+int match(int i,int j);
 int print_all_helices(int total);
+
 char** find_freq(int total);
 double calc_entropy(int marg);
 int charcompare(const void *v1, const void *v2);
