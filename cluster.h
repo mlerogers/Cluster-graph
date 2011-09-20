@@ -5,13 +5,15 @@
 //size of char array holding helix id
 #define ARRAYSIZE 20
 //default frequency threshold in percentage
-#define DEF_THRESH_FREQ 10
+#define DEF_THRESH_FREQ 10.0
 //default frequency for a helix to be a given
-#define DEF_THRESH_COMMON 99
+#define DEF_THRESH_COMMON 99.0
 //default total number of freq helices
 #define DEF_NUMFREQ 7
-//default maximum allowed profiles (computational reasons)
-#define DEF_NUMPROF 20
+//default profile frequency threshold in percentage
+#define DEF_PROF_FREQ 2.0
+//default percentage of structures represented by final profiles
+#define DEF_THRESH_STRUCT 85.0
 //initial size of memory allocated = ARRAYSIZE * SIZE
 #define INIT_SIZE 2
 //default output file name
@@ -31,19 +33,19 @@ extern int FILTER;
 //if 1, prints additional info
 extern int VERBOSE;
 //if freq > thresh_freq, is significant (in percentage)
-extern int THRESH_FREQ;
+extern double THRESH_FREQ;
 //if freq > thresh_common, assume is in everything
-extern int THRESH_COMMON;
+extern double THRESH_COMMON;
 //limit to number of frequent helices
 extern int NUMFREQ;
-//whether to prune profiles to below NUMPROF
-extern int PRUNE;
 //limit to number of profiles made
 extern int NUMPROF;
 //profiles must have freq at least PROF_FREQ
-extern int PROF_FREQ;
+extern double PROF_FREQ;
 //number of structures processed; sfold generates 1000
 extern int NUMSTRUCTS;
+//lower bound for percent of structures represented by final profiles
+extern double THRESH_STRUCT;
 //sets minimum length a freq helix must be
 extern int LENGTH;
 //makes triplet stats in process_structs
@@ -69,7 +71,8 @@ int freqcompare(const void *v1, const void *v2);
 int binsearch(char **mostfreq, char *key);
 void freq_insert(char *key,int marg,int length);
 //int make_graph(HASHTBL *marg, HASHTBL *max,HASHTBL *idhash,int total, char *name, FILE *fp);
-HASHTBL* make_cluster(char *name,char **mostfreq);
+int make_profiles(char *name);
+int select_profiles(char **mostfreq,int notcommon);
 int profcompare(const void *v1, const void *v2);
 char* process_profile(HASHTBL *halfbrac,char *profile,int numhelix,int *size,int *most);
 void make_brackets(HASHTBL *brac, int i, int j, int id);

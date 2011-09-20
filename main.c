@@ -15,35 +15,39 @@ char *OUTPUT;
 char *INPUT;
 int FILTER;
 int VERBOSE;
-int THRESH_FREQ;
-int THRESH_COMMON;
+double THRESH_FREQ;
+double THRESH_COMMON;
 int NUMFREQ;
-int PRUNE;
 int NUMPROF;
-int PROF_FREQ;
+double PROF_FREQ;
 int NUMSTRUCTS;
+double THRESH_STRUCT;
 int LENGTH;
 int STATS;
 
+//turns on or off graphing section of code
+static int GRAPH;
+
 //input first the fasta file, then the sample_1000.out file run on the fasta
 int main(int argc, char *argv[]) {
-  int i,total;
+  int i,total,notcommon,allprof;
   char **mostfreq;
   FILE *fp;
 
   OUTPUT = DEF_OUTPUT;
   INPUT = NULL;
   FILTER = 0;
-  PRUNE = 0;
   THRESH_FREQ = DEF_THRESH_FREQ;
   THRESH_COMMON = DEF_THRESH_COMMON;
   VERBOSE = 0;
   NUMFREQ = 0;
-  NUMPROF = DEF_NUMPROF;
-  PROF_FREQ = 0;
+  NUMPROF = 0;
+  PROF_FREQ = DEF_PROF_FREQ;
   NUMSTRUCTS = 0;
+  THRESH_STRUCT = DEF_THRESH_STRUCT;
   LENGTH = 0;
   STATS = 0;
+  GRAPH = 1;
 
   if (argc < 3) {
     fprintf(stderr,"Not enough arguments\n");
@@ -63,20 +67,20 @@ int main(int argc, char *argv[]) {
 	NUMFREQ = DEF_NUMFREQ;
     }
     else if (!strcmp(argv[i],"-t")) {
-      if ((i + 1 <= argc - 1) && sscanf(argv[i+1],"%d",&THRESH_FREQ)) {
-	THRESH_FREQ = atoi(argv[i+1]);
-	if (THRESH_FREQ < 1 || THRESH_FREQ > 100) {
-	  fprintf(stderr,"Error: invalid input for frequency threshold\n");
+      if ((i + 1 <= argc - 1) && sscanf(argv[i+1],"%f",&THRESH_FREQ)) {
+	THRESH_FREQ = atof(argv[i+1]);
+	if (THRESH_FREQ < 0 || THRESH_FREQ > 100) {
+	  fprintf(stderr,"Error: invalid input %f for frequency threshold\n",THRESH_FREQ);
 	  THRESH_FREQ = DEF_THRESH_FREQ;
 	}
 	i++;
       }
     }
     else if (!strcmp(argv[i],"-c")) {
-      if ((i + 1 <= argc - 1) && sscanf(argv[i+1],"%d",&THRESH_COMMON)) {
-	THRESH_COMMON = atoi(argv[i+1]);
-	if (THRESH_COMMON < 1 || THRESH_COMMON > 100) {
-	  fprintf(stderr,"Error: invalid input for common threshold\n");
+      if ((i + 1 <= argc - 1) && sscanf(argv[i+1],"%f",&THRESH_COMMON)) {
+	THRESH_COMMON = atof(argv[i+1]);
+	if (THRESH_COMMON < 0.0 || THRESH_COMMON > 100.0) {
+	  fprintf(stderr,"Error: invalid input %f for common threshold\n",THRESH_COMMON);
 	  THRESH_COMMON = DEF_THRESH_COMMON;
 	}
 	i++;
@@ -90,8 +94,8 @@ int main(int argc, char *argv[]) {
       }
     }
     else if (!strcmp(argv[i],"-q")) {
-      if ((i + 1 <= argc - 1) && sscanf(argv[i+1],"%d",&PROF_FREQ)) {
-	PROF_FREQ = atoi(argv[i+1]);
+      if ((i + 1 <= argc - 1) && sscanf(argv[i+1],"%f",&PROF_FREQ)) {
+	PROF_FREQ = atof(argv[i+1]);
 	i++;
       }
     }
@@ -104,6 +108,12 @@ int main(int argc, char *argv[]) {
     else if (!strcmp(argv[i],"-s")) {
       if ((i + 1 <= argc - 1) && sscanf(argv[i+1],"%d",&NUMSTRUCTS)) {
 	NUMSTRUCTS = atoi(argv[i+1]);
+	i++;
+      }
+    }
+    else if (!strcmp(argv[i],"-s")) {
+      if ((i + 1 <= argc - 1) && sscanf(argv[i+1],"%f",&THRESH_STRUCT)) {
+	THRESH_STRUCT = atof(argv[i+1]);
 	i++;
       }
     }
@@ -121,8 +131,10 @@ int main(int argc, char *argv[]) {
     }
     else if (!strcmp(argv[i],"-v"))
       VERBOSE = 1;
-    else if (!strcmp(argv[i],"-s"))
+    else if (!strcmp(argv[i],"-a"))
       STATS = 1;
+    else if (!strcmp(argv[i],"-g"))
+      GRAPH = 0;
   }
   
   if (!(bp = hashtbl_create(HASHSIZE,NULL))) {
@@ -147,13 +159,18 @@ int main(int argc, char *argv[]) {
 
   total = process_structs(argv[1],argv[2]);
   if (VERBOSE) {
-    printf("Threshold to find frequent helices: %d\%\n",THRESH_FREQ);
+    printf("Threshold to find frequent helices: %.1f\%\n",THRESH_FREQ);
     printf("Maximum number of frequent helices: ");
     if (NUMFREQ == 0)
       puts("no limit");
     else
       printf("%d\n",NUMFREQ);
-    printf("Maximum number of profiles: %d\n", NUMPROF);
+    printf("Threshold to select frequent profiles: %.1f\%\n",PROF_FREQ);    
+    printf("Maximum number of profiles: ");
+    if (NUMPROF == 0)
+      puts("no limit");
+    else
+      printf("%d\n",NUMPROF);
     printf("Number of structures processed: %d\n",NUMSTRUCTS);
  }
   printf("Total number of equivalence helix classes: %d\n",total-1);
@@ -163,20 +180,29 @@ int main(int argc, char *argv[]) {
   //  make_graph(marginals,max,id,total,argv[1],fp);
 
   mostfreq = find_freq(total);
-  printf("Total number of frequent helices: %d\n",hashtbl_numkeys(freq));
-  cluster = make_cluster(argv[2],mostfreq);
+  printf("Total number of selected helices: %d\n",hashtbl_numkeys(freq));
+  notcommon = make_profiles(argv[2]);
+  printf("Total number of profiles: %d\n",hashtbl_numkeys(cluster)-1);
+  allprof = select_profiles(mostfreq,notcommon)-1;
+  printf("Total number of selected profiles: %d\n",hashtbl_numkeys(cluster)-1);
+  if (allprof > 20 && GRAPH) {
+    GRAPH = 0;
+    printf("Total number of profiles above threshold %.1f is %d: disabling graph\n",PROF_FREQ,allprof);
+  }
   if (VERBOSE) {
     fp = fopen("cluster.out","w");
     fprintf(fp,"Processing %s\n",argv[2]);
     print_cluster(fp);
     fclose(fp);
   }
-  printf("Total number of clusters: %d\n",hashtbl_numkeys(cluster)-1);
+
   
-  fp = fopen(OUTPUT,"w");
-  insert_graph(fp);  
-  fputs("}",fp);
-  fclose(fp);
+  if (GRAPH) {
+    fp = fopen(OUTPUT,"w");
+    insert_graph(fp);  
+    fputs("}",fp);
+    fclose(fp);
+  }
   
   hashtbl_destroy(bp);
   hashtbl_destroy(marginals);

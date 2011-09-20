@@ -48,7 +48,9 @@ FILE * fp;
       //printf("adding %s\n", part);
     }
   }
-  printf("seq is %s\n",final);
+  if (VERBOSE) 
+    printf("seq is %s with length %d\n",final,strlen(final));
+  //printf("final char is %c\n",final[strlen(final)-1]);
   return final;
 }
 
@@ -59,7 +61,7 @@ return idcount = num of helix equivalence classes + 1
 */
 int process_structs(char *seqfile,char *name) {
   FILE *fp;
-  int i,j,k,*helixid,idcount=1,longest=1,*lg,*id=NULL,last = 0;
+  int i,j,k,*helixid,idcount=1,*lg,*id=NULL,last = 0;
   char tmp[100],key[ARRAYSIZE],dbl[ARRAYSIZE];
   HASHTBL *temp;
 
@@ -107,7 +109,8 @@ int process_structs(char *seqfile,char *name) {
 	  id = hashtbl_get(marginals,key);
 	  ++*id;
 	} else {
-	  printf("Found repeat id %d\n",last);
+	  //if (VERBOSE) 
+	  //printf("Found repeat id %d:%s\n",last,hashtbl_get(idhash,key));
 	}
 	//triplet stats
 	if (STATS) {
@@ -146,13 +149,11 @@ int process_structs(char *seqfile,char *name) {
 void longest_possible(int i,int j,int k,int id) {
   int m = 1,*check,*num;
   char val[ARRAYSIZE],key[ARRAYSIZE];
-
+  //printf("for %d %d %d\n",i,j,k);
   while (match(i+k,j-k)) k++;
   //printf("k is now %d\n",k);
   while (match(i-m,j+m)) m++;
   m--;
-  //printf("m is now %d\n",m);
-
   i -= m;
   j += m;
   k+= m;
@@ -178,10 +179,10 @@ int match(int i,int j) {
   char l,r;
   if (i >= j) return 0;
   if (i < 1) return 0;
-  if (j >= strlen(seq)) return 0;
+  if (j > strlen(seq)) return 0;
   l = seq[i-1];
   r = seq[j-1];
-  //printf("l(%d) is %c and r(%d) is %c\n",i-1,l,j-1,r);
+  //  printf("l(%d) is %c and r(%d) is %c\n",i,l,j,r);
   if ((l == 'a' || l == 'A') && (r == 'u' || r == 'U' || r == 't' || r == 'T'))
     return 1;
   else if ((l == 'u' || l == 'U' || l == 't' || l == 'T') && (r == 'a' || r == 'A' || r == 'g' || r == 'G'))
@@ -237,9 +238,10 @@ int print_all_helices(int total) {
 
 //finds all frequent helices > threshold and prints them out
 //inserts into hash with key = id, val = 1
+//returns linked list of frequent helices ordered in ascending frequency
 char** find_freq(int total) {
-  int *marg = NULL,i,count = 0,percent,h,j,k;
-  double entropy;
+  int *marg = NULL,i,count = 0,h,j,k;
+  double percent;
   char key[ARRAYSIZE],**mostfreq,*val;
   KEY *node = NULL,*begin = NULL;
 
@@ -266,10 +268,10 @@ char** find_freq(int total) {
     //printf("entropy for %d is %.2f\n",i,entropy);
     if (!marg)
       fprintf(stderr,"error: marginal in find_freq is null");
-    percent = *marg*100/NUMSTRUCTS;
+    percent = ((double)*marg)*100.0/((double)NUMSTRUCTS);
     if (percent >= THRESH_COMMON) {
       if (VERBOSE)
-	printf("Common helix %s with freq %d\n",key,*marg);
+	printf("Common helix %s with freq %d/%d\n",key,*marg,NUMSTRUCTS);
       hashtbl_insert(common,key,"1");
     }
     else if (percent >= THRESH_FREQ) {
@@ -439,12 +441,11 @@ void freq_insert(char *key,int marg,int length) {
 //like cluster.pl
 //hash freq: key = helix ID. val = 1 (indicator)
 //hash cluster: key = (num helices) list of helices. val = freq
-HASHTBL* make_cluster(char *name,char **mostfreq) {
-  FILE *fp;
-  int num=0,id = 0,i,j,k,last = -1, iscommon = 0,toosmall = 0;
-  int *count=NULL,most=0,numhelix = 0,size=INIT_SIZE,notcommon = 0;
-  char temp[100],val[ARRAYSIZE],*l=NULL,*profile=NULL,**prof;
-  KEY *node = NULL;
+int make_profiles(char *name) {
+  FILE *fp,*file;
+  int num=0,id = 0,i,j,k,last = -1, iscommon = 0;
+  int most=0,numhelix = 0,size=INIT_SIZE,notcommon = 0,*count;
+  char temp[100],val[ARRAYSIZE],*l=NULL,*profile=NULL;
   HASHTBL *halfbrac;
 
   profile = malloc(sizeof(char)*ARRAYSIZE*size);
@@ -464,6 +465,7 @@ HASHTBL* make_cluster(char *name,char **mostfreq) {
     exit(EXIT_FAILURE);
   }
   fp = fopen(name,"r");
+  file = fopen("structure.out","w");
   if (fp == NULL) {
     fprintf(stderr, "can't open %s\n",name);
     return 0;
@@ -472,7 +474,7 @@ HASHTBL* make_cluster(char *name,char **mostfreq) {
     if (sscanf(temp,"Structure %d",&num) == 1) {
       if (last == -1)
 	continue;
-      if (iscommon != hashtbl_numkeys(common)) {
+      if (iscommon < hashtbl_numkeys(common)) {
 	if (VERBOSE) 
 	  printf("Found profile %snot having common helices\n",profile);
 	notcommon++;
@@ -481,6 +483,7 @@ HASHTBL* make_cluster(char *name,char **mostfreq) {
 	profile = process_profile(halfbrac,profile,numhelix,&size,&most);
       //if (VERBOSE && (count = hashtbl_get(cluster,profile)) && (*count == 1))
       //printf("First struct %d with profile %s\n",num,profile);
+      fprintf(file,"Structure %d: %s\n",num-1,profile);
       if (!(halfbrac = hashtbl_create(HASHSIZE,NULL))) {
 	fprintf(stderr, "ERROR: hashtbl_create() for halfbrac failed");
 	exit(EXIT_FAILURE);
@@ -520,13 +523,31 @@ HASHTBL* make_cluster(char *name,char **mostfreq) {
   }
   else
     profile = process_profile(halfbrac,profile,numhelix,&size,&most);
-  printf("Original number of profiles before filtering: %d\n",hashtbl_numkeys(cluster));
+  fprintf(file,"Structure %d: %s\n",num,profile);
+  count = malloc(sizeof(int));
+  *count = most;
+  hashtbl_insert(cluster,"most",count);
+  //printf("most is %d\n",*count);
+  free(profile);
+  fclose(fp);
+  fclose(file);
+  return notcommon;
+}
+
+int select_profiles(char **mostfreq,int notcommon) {
+  KEY *node = NULL;
+  int *count = NULL,toosmall = 0,i,j,k,num = 0;
+  double percent,rep;
+  char **prof;
+
   if (PROF_FREQ) {
     //if (VERBOSE)
     //printf("Original number of profiles before filtering: %d\n",hashtbl_numkeys(cluster));
-    for (node = hashtbl_getkeys(cluster); node; node = node->next) {
+    for (node = hashtbl_getkeys(cluster),node = node->next; node; node = node->next) {
       count = hashtbl_get(cluster,node->data);
-      if (*((int*)hashtbl_get(cluster,node->data)) < PROF_FREQ) {
+      percent = ((double) *count)*100.0 / ((double)NUMSTRUCTS);
+      //printf("%s has percent %.1f\n",node->data,percent);
+      if (percent < PROF_FREQ) {
 	if (VERBOSE)
 	  printf("removing %s with freq %d\n",node->data,*count);
 	toosmall += *count;
@@ -537,15 +558,10 @@ HASHTBL* make_cluster(char *name,char **mostfreq) {
   }
   if (VERBOSE) {
     printf("Number of structs with infrequent profile: %d\n",toosmall);
-    printf("Number of profiles before pruning: %d\n",hashtbl_numkeys(cluster));
+    //printf("Number of profiles before pruning: %d\n",hashtbl_numkeys(cluster));
   }
-  num = 0;
-  if (PRUNE) {
-    for (; hashtbl_numkeys(cluster) > NUMPROF; prune_profiles(mostfreq))
-      if (VERBOSE)
-	printf("pruning profiles, now at %d profiles\n",hashtbl_numkeys(cluster));    
-  }
-  else {
+
+  if (NUMPROF) {
     j = hashtbl_numkeys(cluster);
     if (j > NUMPROF) {
       prof = malloc(sizeof(char*)*j);
@@ -554,7 +570,6 @@ HASHTBL* make_cluster(char *name,char **mostfreq) {
       qsort(prof,j,sizeof(char*),profcompare);
       //for (k = 0; k < j; k++) 
       //printf("%s with freq %d\n",prof[k],*((int*)hashtbl_get(cluster,prof[k])));      
-      num = 0;
       for (k = NUMPROF; k < j; k++) {
 	i = *((int*)hashtbl_get(cluster,prof[k]));
 	if (VERBOSE)
@@ -570,16 +585,19 @@ HASHTBL* make_cluster(char *name,char **mostfreq) {
       free(prof);
     }
   }
+  rep = ((double)(NUMSTRUCTS - (notcommon+toosmall+num)))/((double) NUMSTRUCTS);
+  /*
+  if (rep < THRESH_STRUCT) {
+    for (; hashtbl_numkeys(cluster) > NUMPROF; prune_profiles(mostfreq))
+      if (VERBOSE)
+	printf("pruning profiles, now at %d profiles\n",hashtbl_numkeys(cluster));    
+  }
+  */
   if (VERBOSE)
     printf("Number of structures without common helices: %d\n",notcommon);
-  printf("Total structures not represented in graph: %d\n",notcommon+toosmall+num);
-  count = malloc(sizeof(int));
-  *count = most;
-  hashtbl_insert(cluster,"most",count);
-  //printf("most is %d\n",*count);
-
-  free(profile);
-  return cluster;
+  printf("Number of structures represented in graph: %d/%d\n",NUMSTRUCTS - (notcommon+toosmall+num),NUMSTRUCTS);
+  
+  return hashtbl_numkeys(cluster);
 }
 
 //will sort to have descending freq
@@ -782,7 +800,7 @@ void prune_profiles(char **mostfreq) {
 }
 
 //takes cluster entry origprof and removes least if present
-  char *delete_helix(char *origprof, char *least,char *modprofile,int *m) {
+char *delete_helix(char *origprof, char *least,char *modprofile,int *m) {
   int length,found = 0;
   char *k,*blank = " ";
   char *copy = mystrdup(origprof);
@@ -823,7 +841,7 @@ int print_cluster(FILE *fp) {
   //first element is entry for most
   count = hashtbl_get(cluster,node->data);
   //printf("Longest chain of helices: %d\n",*count);
-  fprintf(fp,"Using a threshold of %d:\n",THRESH_FREQ);
+  fprintf(fp,"Using a threshold of %.1f:\n",THRESH_FREQ);
   for (node = node->next; node != NULL; node = node->next) {
     key = strdup(node->data);
     count = hashtbl_get(cluster,key);
