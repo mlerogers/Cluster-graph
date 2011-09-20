@@ -1,1 +1,24 @@
 Cluster-graph
+
+To compile on a Unix/Linus machine, make sure these are in the same directory:
+--main.c
+--cluster.h
+--cluster.c
+--condensed.c
+--hashtbl.c
+--hashtbl.h
+--Makefile
+
+Type 'make'.
+
+To run, you will need to input 1) a sequence file, and 2) an sfold 'sample_1000.out' file. Included in the repository is a sequence file and a sample_1000 file from ecoli 5S that may be used to run the program.
+
+Type './main [seq file] [sample file] [options]' to run.
+
+Common options:
+
+-t [percent] = filter out all helix classes that occur less than [percent] number of times (default 10)
+-q [percent] = filter out all profiles that occur less than [percent] number of times (default 2)
+-v = verbose output
+-g = disable graph making component of program (if just interested in helix and profile stats)
+-o [file name] = produces the output dot file called [file name]; otherwise, output is called 'cluster.dot'
