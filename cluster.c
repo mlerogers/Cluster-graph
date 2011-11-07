@@ -15,14 +15,14 @@ static HASHTBL *common;
 static char *seq;
 
 /*
-Input: the fasta file sfold ran on. First line is description, rest of lines is sequence
+Input: the fasta file sfold ran on. First line must be description, rest of lines is sequence
 Does: Stores nucleotide at position i in array
 Used to find longest possible
 */
 char* input_seq(char *seqfile) {
 FILE * fp;
-  int size = 5,over = 0;
-  char temp[100],*blank = " \n",*part,*final;
+  int size = 5,fasta = 0;
+  char temp[100],*blank = " \n",*part,*final,*test;
 
   fp = fopen(seqfile,"r");
   if (fp == NULL) {
@@ -33,23 +33,26 @@ FILE * fp;
   final[0] = '\0';
   while (fgets(temp,100,fp)) {    
     //put error handling in case first line has more than 100 chars
-    if (!over) {
+    //skipping first line if fasta header and not seq
+    if (temp[0] == '>' || fasta) {
+      //printf("found fasta header %s",temp);
       if (strlen(temp) < 99 || (strlen(temp) == 99 && temp[98] == '\n'))
-	over = 1;
-      //printf("first line %s with length %d\n",temp,strlen(temp));
+	continue;
+      else 
+	fasta = 1;
       continue;
-    }
+    } 
     for (part = strtok(temp,blank); part; part = strtok(NULL,blank)) {
       if (strlen(final)+strlen(part) > ARRAYSIZE*size-1) {
 	while (++size*ARRAYSIZE - 1 < strlen(final)+strlen(part)) ;
 	final = realloc(final,ARRAYSIZE*size);
       }
       final = strcat(final,part);
-      //printf("adding %s\n", part);
+      //printf("adding %s of length %d for total length of %d\n", part,strlen(part),strlen(final));
     }
   }
   if (VERBOSE) 
-    printf("seq is %s with length %d\n",final,strlen(final));
+    printf("seq in %s is %s with length %d\n",seqfile,final,strlen(final));
   //printf("final char is %c\n",final[strlen(final)-1]);
   return final;
 }
@@ -61,9 +64,10 @@ return idcount = num of helix equivalence classes + 1
 */
 int process_structs(char *seqfile,char *name) {
   FILE *fp;
-  int i,j,k,*helixid,idcount=1,*lg,*id=NULL,last = 0;
+  int i,j,k,*helixid,idcount=1,*lg,*id=NULL,last = 0, toosmall = 0;
+  double *trip;
   char tmp[100],key[ARRAYSIZE],dbl[ARRAYSIZE];
-  HASHTBL *temp;
+  HASHTBL *temp,*extra;
 
   fp = fopen(name,"r");
   if (fp == NULL) {
@@ -71,14 +75,28 @@ int process_structs(char *seqfile,char *name) {
     return 0;
   }
   seq = input_seq(seqfile);
-  if (STATS)
+  if (STATS) 
     triplet = hashtbl_create(HASHSIZE,NULL);
+
+  if (!(avetrip = hashtbl_create(HASHSIZE,NULL))) {
+    fprintf(stderr, "ERROR: hashtbl_create() for avetrip failed");
+    exit(EXIT_FAILURE);
+  }
+  if (!(extra = hashtbl_create(HASHSIZE,NULL))) {
+    fprintf(stderr, "ERROR: hashtbl_create() for extra failed");
+    exit(EXIT_FAILURE);
+  }
 
   while (fgets(tmp,100,fp) != NULL) {
     if (sscanf(tmp,"%d %d %d",&i,&j,&k) == 3) {
       if (i == 0) continue;
       //if (longest < k) 
       //longest = k;
+      if (k < MIN_HEL_LEN) {
+	toosmall++;
+	//printf("too small %d %d %d\n",i,j,k);
+	continue;
+      }
       sprintf(dbl,"%d %d",i,j);
       helixid = hashtbl_get(bp,dbl);
       //printf("%d %d %d\n",i,j,k);
@@ -90,7 +108,13 @@ int process_structs(char *seqfile,char *name) {
 	id = malloc(sizeof(int));
 	*id = 1;
 	hashtbl_insert(marginals,key,id);
+	//printf("inserting %s for %d %d %d\n",key,i,j,k);
 	//triplet stats
+	trip = malloc(sizeof(double)*3);
+	trip[0] = i;
+	trip[1] = j;
+	trip[2] = k;
+	hashtbl_insert(avetrip,key,trip);
 	if (STATS) {
 	  temp = hashtbl_create(HASHSIZE,NULL);
 	  sprintf(dbl,"%d %d",i,k);
@@ -109,10 +133,23 @@ int process_structs(char *seqfile,char *name) {
 	  id = hashtbl_get(marginals,key);
 	  ++*id;
 	} else {
+	  if ((lg = hashtbl_get(extra,key)))
+	    ++*lg;
+	  else {
+	    lg = malloc(sizeof(int));
+	    *lg = 1;
+	    hashtbl_insert(extra,key,lg);
+	  }
 	  //if (VERBOSE) 
 	  //printf("Found repeat id %d:%s\n",last,hashtbl_get(idhash,key));
 	}
 	//triplet stats
+	trip = hashtbl_get(avetrip,key);
+	trip[0] += i;
+	trip[1] += j;
+	trip[2] += k;
+	//	if (*helixid == 2)
+	//printf("%.1f ",trip[1]);
 	if (STATS) {
 	  temp = hashtbl_get(triplet,key);
 	  sprintf(dbl,"%d %d",i,k);
@@ -131,15 +168,22 @@ int process_structs(char *seqfile,char *name) {
     else if (sscanf(tmp,"Structure %d",&i) == 1)
       NUMSTRUCTS++;
   }
-  /*
-  lg = malloc(sizeof(int));
-  *lg = longest;
-  hashtbl_insert(bp,"longest",lg);
-  */
 
-  //  printf("\n");
+  for (i = 1; i < idcount; i++) {
+    sprintf(key,"%d",i);
+    id = hashtbl_get(marginals,key);
+    if ((lg = hashtbl_get(extra,key))) 
+      k = *id + *lg;
+    else
+      k = *id;
+    trip = hashtbl_get(avetrip,key);
+    for (j = 0; j < 3; j++)
+      //printf(" %.1f", trip[j]);
+      trip[j] /= k;
+  }
   if (fclose(fp))
     fprintf(stderr, "File %s not closed successfully\n",name);
+  hashtbl_destroy(extra);
   return idcount;   //idcount augmented, so can use < in loops
 }
 
@@ -182,7 +226,7 @@ int match(int i,int j) {
   if (j > strlen(seq)) return 0;
   l = seq[i-1];
   r = seq[j-1];
-  //  printf("l(%d) is %c and r(%d) is %c\n",i,l,j,r);
+  //printf("l(%d) is %c and r(%d) is %c\n",i,l,j,r);
   if ((l == 'a' || l == 'A') && (r == 'u' || r == 'U' || r == 't' || r == 'T'))
     return 1;
   else if ((l == 'u' || l == 'U' || l == 't' || l == 'T') && (r == 'a' || r == 'A' || r == 'g' || r == 'G'))
@@ -195,22 +239,180 @@ int match(int i,int j) {
     return 0;
 }
 
+//set h such that all helices with freq < h have sum(freq) <= NOISE
+//if exact threshold occurs in middle of list of helices with same freq, include all in list
+//normalize h around 10
+double set_noise_thresh(HASHTBL *hash,int start) {
+  int *helices,i=0,sum=0,target,freq_target,count = 0,total;
+    //last=1,new=0;
+  double h;
+  KEY *node;
+
+  freq_target = start*NUMSTRUCTS/100;
+  total = hashtbl_numkeys(hash);
+  helices = malloc(sizeof(int)*total);
+  for (node = hashtbl_getkeys(hash); node; node = node->next) {
+    helices[i] = *((int*)hashtbl_get(hash,node->data));
+    sum += helices[i++];
+  }
+  qsort(helices,total,sizeof(int),compare);
+  target = sum*NOISE/100;
+  if (VERBOSE)
+    printf("Total sum is %d out of %d helix classes, with target %d and average %d\n",sum,i-1,target,sum/total);
+  for (i = 0; count < target; count += helices[++i]) {
+    if (helices[i] >= freq_target) {
+      printf("capping things at h = %d\n",start);
+      return (double) start;
+    }
+  }
+  h = ((double)(helices[i-1]+1)*100)/(double)NUMSTRUCTS;
+
+  //if encounter 10% before h = 10
+  for (count -= helices[i]; helices[i] < freq_target; i++) {
+    count += helices[i];
+  }
+  //printf("h is %.1f at 10% with target at h = %d being %d\n",h,freq_target,count);
+  //printf("Found %d helix classes with frequency less than %d\n",i-1,freq_target);
+  for (target = (sum*NOISE/100 + count)/2; count > target; count -= helices[--i]) ;
+  //printf("target is now %d\n",target);
+  h = ((double)(helices[i-1]+1)*100)/(double)NUMSTRUCTS;
+  //printf("Count is %d after subtracting %d with previous %d; setting h to %.1f\n",count,helices[i],count+helices[i],h);
+  printf("Setting threshold to %.1f\n",h);
+  //turning helix frequency into a percent, just beyond cutoff found (add 1)
+  return h;
+}
+
+//needs work
+double set_thresh_tenpercent(HASHTBL *hash, int start) {
+  int *helices,i=0,sum=0,target,freq_target,count = 0,total;
+  double h;
+  KEY *node;
+  
+  //freq_target = HORP*NUMSTRUCTS/100;
+  total = hashtbl_numkeys(hash);
+  helices = malloc(sizeof(int)*total);
+  for (node = hashtbl_getkeys(hash); node; node = node->next) {
+    helices[i] = *((int*)hashtbl_get(hash,node->data));
+    sum += helices[i++];
+  }
+  qsort(helices,total,sizeof(int),compare);
+  target = sum*NOISE/100;
+  for (i = 0; count < target; count += helices[++i]) {
+    if (helices[i] >= freq_target) {
+      printf("capping things at h = %d\n",start);
+      return (double) start;
+    }
+  }
+  h = ((double)(helices[i-1]+1)*100)/(double)NUMSTRUCTS;
+  return h;
+}
+
+double set_h_dropoff(HASHTBL *hash, int start) {
+  int *helices,i,sum=0,freq_target,ave = 0,*dropoffs,diff,*val,total,partial=0;
+  char key[ARRAYSIZE];
+  double h, frac;
+  //where you start in drop off calc has to cover at least 50% of area
+  double coverage = 50.0;
+  KEY *node;
+  HASHTBL *diff_to_key;
+
+  total = hashtbl_numkeys(hash);
+  //if (total < 4)
+  //return 1.0;
+
+  if (!(diff_to_key = hashtbl_create(HASHSIZE,NULL))) {
+    fprintf(stderr, "ERROR: hashtbl_create() for diff_to_key failed");
+    exit(EXIT_FAILURE);
+  }
+
+  //translate start percentage to actual num of elements
+  freq_target = start*NUMSTRUCTS/100;
+
+  helices = malloc(sizeof(int)*total);
+  //initialize top three dropoff locations
+  dropoffs = malloc(sizeof(int)*3);
+  for (i = 0; i<3; dropoffs[i++] = 0) ;
+  i = 0;
+  for (node = hashtbl_getkeys(hash); node; node = node->next) {
+    helices[i] = *((int*)hashtbl_get(hash,node->data));
+    //printf("helices[%d] = %d\n",i,helices[i]);
+    sum += helices[i++];
+  }
+
+  qsort(helices,total,sizeof(int),compare);
+  //printf("freq target is %d with sum %d last num %d at %d\n",freq_target,sum,helices[i-1],i);
+  //for (i = 0; i < total; i++)
+  //printf("helices[%d] is %d\n",i,helices[i]);
+  for (--i; helices[i] > freq_target && i >= 0; i--)
+    partial += helices[i];
+  //if everything above start, return the start
+  if (i < 0)
+    return (double) start;
+
+  //if stopping at freq_target results in less than 50% coverage, go to at least 50%
+  frac = ((double) partial*100)/((double)sum);
+  if (frac < coverage) {
+    //printf("not up to coverage with %d/%d\n",partial,sum);
+    while (frac < coverage) {
+      partial += helices[i--];
+      frac = ((double) partial*100)/((double)sum);
+    }
+    //printf("now at %d/%d = %.1f at helices[%d] = %d\n",partial,sum,frac,i+1,helices[i+1]);
+  }
+  //create entry for 0, in case no drop off exists
+  sprintf(key,"%d",0);
+  val = malloc(sizeof(int));
+  *val = helices[i];
+  hashtbl_insert(diff_to_key,key,val);
+
+  for ( ; i > 0; i--) {
+    ave = (helices[i+1]+helices[i-1])/2;
+    diff = ave - helices[i];
+    //printf("ave is %d and diff is %d for %d\n",ave,diff,i);
+    if (diff > dropoffs[0]) {
+      //printf("bumping off %d for %d\n",dropoffs[0],diff);
+      dropoffs[0] = diff;
+      qsort(dropoffs,3,sizeof(int),compare);
+      sprintf(key,"%d",diff);
+      val = malloc(sizeof(int));
+      *val = helices[i];
+      hashtbl_insert(diff_to_key,key,val);
+      //printf("inserting %s with %d\n",key,*val);
+    }
+  }
+  printf("Possible cutoffs: ");
+  for (i = 0; i<3; i++) {
+    sprintf(key,"%d",dropoffs[i]);
+    val = hashtbl_get(diff_to_key,key);
+    if (val) {
+      h = ((double)(*val+1)*100)/(double)NUMSTRUCTS;
+      printf("%.1f ",h);
+    }
+  }
+  printf("\n");
+  hashtbl_destroy(diff_to_key);
+  return h;
+}
+
 //looks up and prints actual helices for all id's
 int print_all_helices(int total) {
   FILE *fp;
   HASHTBL *temp;
   KEY *node;
   char key[ARRAYSIZE],*val;
+  double *trip;
   int i,*m;
 
   if (STATS)
     fp = fopen("triplet.out","w");
+
   for (i = 1; i < total; i++) {
     sprintf(key,"%d",i);
     val = hashtbl_get(idhash,key);
     m = hashtbl_get(marginals,key);
+    trip = hashtbl_get(avetrip,key);
     if (val != NULL)
-      printf("Helix %d is %s with freq %d\n",i,val,*m);
+      printf("Helix %d is %s (%.1f %.1f %.1f) with freq %d\n",i,val,trip[0],trip[1],trip[2],*m);
     else
       printf("No entry for %d\n",i);
     if (STATS) {
@@ -257,6 +459,7 @@ char** find_freq(int total) {
     mostfreq = malloc(sizeof(char*)*NUMFREQ);
   for (i = 1; i < total; i++) {
     sprintf(key,"%d",i);
+    //LENGTH depreciated for now, filtering on size happening in process_structs
     if (LENGTH) {
       val = hashtbl_get(idhash,key);
       sscanf(val,"%d %d %d",&h,&j,&k);
@@ -443,7 +646,7 @@ void freq_insert(char *key,int marg,int length) {
 //hash cluster: key = (num helices) list of helices. val = freq
 int make_profiles(char *name) {
   FILE *fp,*file;
-  int num=0,id = 0,i,j,k,last = -1, iscommon = 0;
+  int num=0,*id = 0,i,j,k,last = -1, iscommon = 0;
   int most=0,numhelix = 0,size=INIT_SIZE,notcommon = 0,*count;
   char temp[100],val[ARRAYSIZE],*l=NULL,*profile=NULL;
   HASHTBL *halfbrac;
@@ -466,14 +669,18 @@ int make_profiles(char *name) {
   }
   fp = fopen(name,"r");
   file = fopen("structure.out","w");
+  fprintf(file,"Processing %s\n",name);
   if (fp == NULL) {
     fprintf(stderr, "can't open %s\n",name);
     return 0;
   }
   while (fgets(temp,100,fp) != NULL) {
     if (sscanf(temp,"Structure %d",&num) == 1) {
-      if (last == -1)
+      if (last == -1) {
+	fprintf(file,"Structure %d: ",num);	
 	continue;
+      }
+      fprintf(file,"\n\t-> %s\nStructure %d: ",profile,num);
       if (iscommon < hashtbl_numkeys(common)) {
 	if (VERBOSE) 
 	  printf("Found profile %snot having common helices\n",profile);
@@ -481,9 +688,9 @@ int make_profiles(char *name) {
       }
       else
 	profile = process_profile(halfbrac,profile,numhelix,&size,&most);
+
       //if (VERBOSE && (count = hashtbl_get(cluster,profile)) && (*count == 1))
       //printf("First struct %d with profile %s\n",num,profile);
-      fprintf(file,"Structure %d: %s\n",num-1,profile);
       if (!(halfbrac = hashtbl_create(HASHSIZE,NULL))) {
 	fprintf(stderr, "ERROR: hashtbl_create() for halfbrac failed");
 	exit(EXIT_FAILURE);
@@ -495,9 +702,11 @@ int make_profiles(char *name) {
     }
     else if (sscanf(temp,"%d %d %d",&i,&j,&k) == 3) {
       sprintf(val,"%d %d",i,j);
-      id = *((int*) hashtbl_get(bp,val));
-      if (id != -1 && id != last) {
-	sprintf(val,"%d",id);
+      id = hashtbl_get(bp,val);
+      if (!id) continue;
+      if (*id != -1 && *id != last) {
+	fprintf(file,"%d ",*id);
+	sprintf(val,"%d",*id);
 	if (hashtbl_get(common,val)) {
 	  //printf("found helix %s out of %d common\n",val,hashtbl_numkeys(common));
 	  iscommon++;
@@ -510,12 +719,13 @@ int make_profiles(char *name) {
 	  //printf("adding %d to profile\n",id);
 	  strcat(profile,val);
 	  strcat(profile," ");
-	  make_brackets(halfbrac,i,j,id);
+	  make_brackets(halfbrac,i,j,*id);
 	} 
-	last = id;
+	last = *id;
       } 
     }
   }
+  fprintf(file,"\n\t-> %s ",profile);
   if (iscommon != hashtbl_numkeys(common)) {
     if (VERBOSE)
       printf("Found profile %snot having common helices\n",profile);
@@ -523,7 +733,7 @@ int make_profiles(char *name) {
   }
   else
     profile = process_profile(halfbrac,profile,numhelix,&size,&most);
-  fprintf(file,"Structure %d: %s\n",num,profile);
+  //fprintf(file,"Structure %d: %s\n",num,profile);
   count = malloc(sizeof(int));
   *count = most;
   hashtbl_insert(cluster,"most",count);
@@ -532,6 +742,19 @@ int make_profiles(char *name) {
   fclose(fp);
   fclose(file);
   return notcommon;
+}
+
+int print_profiles() {
+  int *val;
+  KEY *node;
+
+  node = hashtbl_getkeys(cluster);
+  for (node = node->next; node; node = node->next) {
+    val = hashtbl_get(cluster,node->data);
+    if (VERBOSE)
+      printf("Profile %s with freq %d\n",node->data,*val);
+  }
+  return 0;
 }
 
 int select_profiles(char **mostfreq,int notcommon) {
@@ -548,8 +771,8 @@ int select_profiles(char **mostfreq,int notcommon) {
       percent = ((double) *count)*100.0 / ((double)NUMSTRUCTS);
       //printf("%s has percent %.1f\n",node->data,percent);
       if (percent < PROF_FREQ) {
-	if (VERBOSE)
-	  printf("removing %s with freq %d\n",node->data,*count);
+	//if (VERBOSE)
+	//printf("removing %s with freq %d\n",node->data,*count);
 	toosmall += *count;
 	if (hashtbl_remove(cluster,node->data) == -1) 
 	  fprintf(stderr,"Failed remove of %s in cluster\n",node->data);
@@ -572,8 +795,8 @@ int select_profiles(char **mostfreq,int notcommon) {
       //printf("%s with freq %d\n",prof[k],*((int*)hashtbl_get(cluster,prof[k])));      
       for (k = NUMPROF; k < j; k++) {
 	i = *((int*)hashtbl_get(cluster,prof[k]));
-	if (VERBOSE)
-	  printf("removing %s with freq %d\n",prof[k],i);
+	//if (VERBOSE)
+	//printf("removing %s with freq %d\n",prof[k],i);
 	num += i;
 	if (hashtbl_remove(cluster,prof[k]) == -1)
 	  fprintf(stderr,"Failed remove of %s in cluster\n",prof[k]);
@@ -737,6 +960,7 @@ char* quicksort(char *profile,char *dup) {
   return profile;
 }
 
+//sorts numerically into ascending order
 int compare(const void *v1, const void *v2) {
   return (*(int*)v1 - *(int*)v2);
 }
@@ -832,6 +1056,7 @@ char *delete_helix(char *origprof, char *least,char *modprofile,int *m) {
   free(copy);
   return origprof;
 }
+
 
 int print_cluster(FILE *fp) {
   int *count, length,i;

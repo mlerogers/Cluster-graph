@@ -4,6 +4,14 @@
 #define HASHSIZE 31
 //size of char array holding helix id
 #define ARRAYSIZE 20
+//default noise threshold in percent; used to define h and p
+#define DEF_NOISE 10
+//default value that looking for h dropoff starts at (in percent)
+#define H_START 10
+//default value that looking for p dropoff starts at (in percent)
+#define P_START 5
+//default minimum significant helix size
+#define DEF_MIN_HEL_LEN 1
 //default frequency threshold in percentage
 #define DEF_THRESH_FREQ 10.0
 //default frequency for a helix to be a given
@@ -26,12 +34,21 @@ extern HASHTBL *freq;
 extern HASHTBL *cluster;
 extern HASHTBL *binary;
 extern HASHTBL *bracket;
+extern HASHTBL *avetrip;
+//file name to write output
 extern char *OUTPUT;
+//file name contains input structure(s)
 extern char *INPUT;
+//file name contains native structure
+extern char *NATIVE;
 //if filter is 1, keep number of freq helices under 10
 extern int FILTER; 
+//defines h and p st they cut off no more than NOISE percentage of area  
+extern int NOISE;
 //if 1, prints additional info
 extern int VERBOSE;
+//minimum size a helix must be to be considered significant
+extern int MIN_HEL_LEN;
 //if freq > thresh_freq, is significant (in percentage)
 extern double THRESH_FREQ;
 //if freq > thresh_common, assume is in everything
@@ -61,6 +78,9 @@ char* input_seq(char *seqfile);
 int process_structs(char *seqfile,char *name);
 void longest_possible(int i,int j,int k,int id);
 int match(int i,int j);
+double set_noise_thresh(HASHTBL *hash, int start);
+double set_thresh_tenpercent(HASHTBL *hash, int start);
+double set_h_dropoff(HASHTBL *hash, int start);
 int print_all_helices(int total);
 
 char** find_freq(int total);
@@ -72,6 +92,7 @@ int binsearch(char **mostfreq, char *key);
 void freq_insert(char *key,int marg,int length);
 //int make_graph(HASHTBL *marg, HASHTBL *max,HASHTBL *idhash,int total, char *name, FILE *fp);
 int make_profiles(char *name);
+int print_profiles();
 int select_profiles(char **mostfreq,int notcommon);
 int profcompare(const void *v1, const void *v2);
 char* process_profile(HASHTBL *halfbrac,char *profile,int numhelix,int *size,int *most);
