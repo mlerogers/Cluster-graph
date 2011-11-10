@@ -22,7 +22,7 @@ Used to find longest possible
 char* input_seq(char *seqfile) {
 FILE * fp;
   int size = 5,fasta = 0;
-  char temp[100],*blank = " \n",*part,*final,*test;
+  char temp[100],*blank = " \n",*part,*final;
 
   fp = fopen(seqfile,"r");
   if (fp == NULL) {
@@ -647,7 +647,7 @@ void freq_insert(char *key,int marg,int length) {
 int make_profiles(char *name) {
   FILE *fp,*file;
   int num=0,*id = 0,i,j,k,last = -1, iscommon = 0;
-  int most=0,numhelix = 0,size=INIT_SIZE,notcommon = 0,*count;
+  int numhelix = 0,size=INIT_SIZE,notcommon = 0;
   char temp[100],val[ARRAYSIZE],*l=NULL,*profile=NULL;
   HASHTBL *halfbrac;
 
@@ -687,7 +687,7 @@ int make_profiles(char *name) {
 	notcommon++;
       }
       else
-	profile = process_profile(halfbrac,profile,numhelix,&size,&most);
+	profile = process_profile(halfbrac,profile,numhelix,&size);
 
       //if (VERBOSE && (count = hashtbl_get(cluster,profile)) && (*count == 1))
       //printf("First struct %d with profile %s\n",num,profile);
@@ -732,12 +732,9 @@ int make_profiles(char *name) {
     notcommon++;
   }
   else
-    profile = process_profile(halfbrac,profile,numhelix,&size,&most);
+    profile = process_profile(halfbrac,profile,numhelix,&size);
   //fprintf(file,"Structure %d: %s\n",num,profile);
-  count = malloc(sizeof(int));
-  *count = most;
-  hashtbl_insert(cluster,"most",count);
-  //printf("most is %d\n",*count);
+  
   free(profile);
   fclose(fp);
   fclose(file);
@@ -759,23 +756,40 @@ int print_profiles() {
 
 int select_profiles(char **mostfreq,int notcommon) {
   KEY *node = NULL;
-  int *count = NULL,toosmall = 0,i,j,k,num = 0;
+  int *count = NULL,toosmall = 0,i,j,k,num = 0,*val,most=0;
   double percent,rep;
-  char **prof;
+  char **prof,*copy,*blank = " ";
+
+  if (!(infreq = hashtbl_create(HASHSIZE,NULL))) {
+    fprintf(stderr, "ERROR: hashtbl_create() for infreq failed");
+    exit(EXIT_FAILURE);
+  }
 
   if (PROF_FREQ) {
     //if (VERBOSE)
     //printf("Original number of profiles before filtering: %d\n",hashtbl_numkeys(cluster));
-    for (node = hashtbl_getkeys(cluster),node = node->next; node; node = node->next) {
+    for (node = hashtbl_getkeys(cluster); node; node = node->next) {
       count = hashtbl_get(cluster,node->data);
       percent = ((double) *count)*100.0 / ((double)NUMSTRUCTS);
       //printf("%s has percent %.1f\n",node->data,percent);
       if (percent < PROF_FREQ) {
 	//if (VERBOSE)
 	//printf("removing %s with freq %d\n",node->data,*count);
+	val = malloc(sizeof(int));
+	*val = *count;
+	hashtbl_insert(infreq,node->data,val);
 	toosmall += *count;
 	if (hashtbl_remove(cluster,node->data) == -1) 
 	  fprintf(stderr,"Failed remove of %s in cluster\n",node->data);
+      }
+      else {
+	if (VERBOSE)
+	  printf("Freq profile %swith freq %d\n",node->data,*count);
+	copy = mystrdup(node->data);
+	i = atoi(strtok(copy,blank));
+	if (most < i)
+	  most = i;
+	free(copy);
       }
     }
   }
@@ -818,8 +832,14 @@ int select_profiles(char **mostfreq,int notcommon) {
   */
   if (VERBOSE)
     printf("Number of structures without common helices: %d\n",notcommon);
-  printf("Number of structures represented in graph: %d/%d\n",NUMSTRUCTS - (notcommon+toosmall+num),NUMSTRUCTS);
-  
+  printf("Number of structures with direct representation in graph: %d/%d\n",NUMSTRUCTS - (notcommon+toosmall+num),NUMSTRUCTS);
+
+  for (node = hashtbl_getkeys(cluster); node; node = node->next) 
+    printf("Node %s\n",node->data);
+  printf("number in cluster: %d\n",hashtbl_numkeys(cluster));
+  count = malloc(sizeof(int));
+  *count = most;
+  hashtbl_insert(cluster,"most",count);
   return hashtbl_numkeys(cluster);
 }
 
@@ -834,7 +854,7 @@ int profcompare(const void *v1, const void *v2) {
 }
 
 //if profile is unique, insert into cluster, and make bracket representation
-char* process_profile(HASHTBL *halfbrac,char *profile,int numhelix,int *size,int *most) {
+char* process_profile(HASHTBL *halfbrac,char *profile,int numhelix,int *size) {
   int *count,size2;
   char val[ARRAYSIZE],*dup;
 
@@ -861,8 +881,8 @@ char* process_profile(HASHTBL *halfbrac,char *profile,int numhelix,int *size,int
     ++*count;
     //printf("augmenting count of %s to %d\n",profile,*count-1);
   }
-  if (*most < numhelix)
-    *most = numhelix;
+  //if (*most < numhelix)
+  //*most = numhelix;
   free(dup);
   hashtbl_destroy(halfbrac);
   return profile;

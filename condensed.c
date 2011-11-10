@@ -15,6 +15,7 @@ static HASHTBL *edges;
 static HASHTBL **graph;
 static HASHTBL *input;
 static char **table;
+static char **profileID;
 static char **modprofileID;
 static int *sums;
 static int most;
@@ -23,7 +24,7 @@ static int graphsize;
 //runs through nodes in cluster, finding their LCA's
 int insert_graph(FILE *fp) {
   int *count,i,*freq,k = 0,numkeys,total;
-  char **profileID,*profile;
+  char *profile;
   KEY *node;
   struct hashnode_s *begin;
 
@@ -36,6 +37,7 @@ int insert_graph(FILE *fp) {
   fprintf(fp,"\tlabel = \"%s\";\n",OUTPUT);
   fprintf(fp,"\tpad = 0.5;\n");
   fprintf(fp,"\tnodesep = 0.5;\n");
+  fprintf(fp,"\"\" [label=\"(0/%d)\"]\n",NUMSTRUCTS);
   //fputs("{ node [shape = plaintext]; ",fp);
  //first entry is longest profile length
   node = hashtbl_getkeys(cluster);
@@ -81,9 +83,13 @@ int insert_graph(FILE *fp) {
   }
 
   make_key();
-  begin = insert_LCAs(fp,profileID,numkeys);
+  begin = insert_LCAs(fp,numkeys);
   //printf("inserted LCA's with numkeys %d\n",numkeys);
+  add_infreq(begin);
   find_LCA_edges(fp,begin,numkeys);
+
+  if (NATIVE)
+    process_native(fp);
   if (INPUT)
     process_input(fp);
   total = print_vertices(fp);
@@ -134,7 +140,7 @@ int insert_and_binary(char *key,char *profile,int freq) {
 //graph holds the final graph, table[freq ID] = ID, profileID[profileID] = profile
 //sums[profileID] = binary rep, k = number of profiles
 //returns beginning of linked list containing all unique LCA's found
-struct hashnode_s* insert_LCAs(FILE *fp,char **profileID,int k) {
+struct hashnode_s* insert_LCAs(FILE *fp,int k) {
   int num,count,frq,*val,bit,s=0,j,*found,size = INIT_SIZE;
   unsigned int i;
   char *profile;
@@ -181,7 +187,6 @@ struct hashnode_s* insert_LCAs(FILE *fp,char **profileID,int k) {
     }
   }
   free(found);
-  //  puts("after free found");
   return node;
 }
 
@@ -271,6 +276,83 @@ char* convert_binary(char *profile,int binary, int *count) {
   *count = num;
   //printf("convert binary's profile is %s for binary %d\n",profile,binary);
   return profile;
+}
+
+//adds infreq profiles to general and specific frequency when applicable
+void add_infreq(struct hashnode_s *begin) {
+  //general freq lives in graph with all vertices
+  int length,sum,k,*val,bin,selected;
+  char *blank = " ",*helix,*orig,*fprof,*copy;
+  struct hashnode_s *listnode;
+  KEY *node;
+  HASHTBL *hash;
+
+  selected = hashtbl_numkeys(cluster)-1;
+  //for every infreq node, add to appropriate gen/spec freq
+  for (node = hashtbl_getkeys(infreq); node; node = node->next) {
+    //prof = malloc(strlen(node->data));
+    //printf("processing infreq %s\n",node->data);
+    orig = mystrdup(node->data);
+    length = atoi(strtok(node->data,blank));
+    //prof[0] = '\0';
+    sum = 0;
+    //find its binary rep
+    for (k = 0; k < length; k++) {
+      helix = strtok(NULL,blank);
+      //strcat(profile,helix);
+      //strcat(profile," ");
+      sum += *((int*) hashtbl_get(binary,helix));
+    }
+    node->data = orig;  
+    //check all oval LCA for parentage/identity
+
+    for (listnode = begin; listnode; listnode = listnode->next) {
+      //key is mod profile, data is bin rep of profile
+      //if identity, change sfreq in cluster
+      bin = *((int*)listnode->data);
+      if (bin == sum)
+	hashtbl_insert(cluster,orig,hashtbl_get(infreq,node->data));
+      //if parent, change gfreq in graph
+      else if ((bin & sum) == bin) {
+	//printf("found oval parent %s of %s\n",listnode->key,orig);
+	for (length = 0; bin > 0; bin >>= 1)
+	  if (bin & 1)
+	    length++;
+	hash = graph[length-1];
+	if (hash) {
+	  val = hashtbl_get(hash,listnode->key);
+	  *val += *((int*)hashtbl_get(infreq,node->data));
+	}
+	else 
+	  fprintf(stderr,"error:didn't find hash at level %d in add_infreq()\n",length-1);
+      }
+    }
+    //check all selected nodes for parentage
+    for (k = 0; k < selected; k++) {
+      fprof = profileID[k];
+      //if intersection (ie parent), add to gfreq
+      if ((sum & sums[k]) == sums[k]) {
+	//printf("found parent %s of %s\n",fprof,orig);
+	copy = mystrdup(fprof);
+	length = atoi(strtok(copy,blank));
+	hash = graph[length-1];
+	fprof = modprofileID[k];
+	val = hashtbl_get(hash,fprof);
+	if (val)
+	  *val += *((int*)hashtbl_get(infreq,node->data));
+	else
+	  fprintf(stderr,"error:val not found in add_infreq()\n");
+	free(copy);
+      }
+    }
+    //free(orig);
+  }
+}
+
+//takes a file that contains the native structure and relates to graph
+//similar to process_input
+void process_native(FILE *fp) {
+
 }
 
 //processes input file containing structures of interest, in triplet form
@@ -663,8 +745,8 @@ void find_LCA_edges(FILE *fp,struct hashnode_s *node,int k) {
 //checks whether edge exists and inserts if not
 //ie insert if profile -> origprof doesn't exist yet
 void check_insert_edge(FILE *fp,char *profile,char *origprof) {
-  int k1=0,k2=0,*f1,*f2;
-  double ratio;
+  int k1=0,k2=0; //*f1,*f2;
+  //double ratio;
   char *diff,*copy,*brac;
   HASHTBL *hash = NULL;
 
@@ -798,7 +880,7 @@ char* edge_label(HASHTBL *hash,char *profile, char *origprof,int k) {
       m++;
     }
     //keep track of which level brackets are at
-    else if (origbrac[i] == ']')
+    else if (origbrac[i] == ']') {
       //printf("\nchecking ind %d against %d at %d\n",ind,save[j]  puts("after check insert edge");,j);
       if (j >= 0 && save[j] == ind--) {
 	j--;
@@ -808,6 +890,7 @@ char* edge_label(HASHTBL *hash,char *profile, char *origprof,int k) {
 	strcat(brac,"]");
 	strcat(copy,"]");
       }
+    }
   }
   if (!(hashtbl_get(bracket,profile))) {
     hashtbl_insert(bracket,profile,brac);

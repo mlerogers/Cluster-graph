@@ -35,6 +35,7 @@ extern HASHTBL *cluster;
 extern HASHTBL *binary;
 extern HASHTBL *bracket;
 extern HASHTBL *avetrip;
+extern HASHTBL *infreq;
 //file name to write output
 extern char *OUTPUT;
 //file name contains input structure(s)
@@ -95,7 +96,7 @@ int make_profiles(char *name);
 int print_profiles();
 int select_profiles(char **mostfreq,int notcommon);
 int profcompare(const void *v1, const void *v2);
-char* process_profile(HASHTBL *halfbrac,char *profile,int numhelix,int *size,int *most);
+char* process_profile(HASHTBL *halfbrac,char *profile,int numhelix,int *size);
 void make_brackets(HASHTBL *brac, int i, int j, int id);
 void make_bracket_rep(HASHTBL *brac,char *profile);
 char* resize(int *size,int total,char *s);
@@ -119,8 +120,10 @@ int print_edges(HASHTBL *hash,char **array,int length,FILE *fp);
 int insert_graph(FILE *fp);
 int insert_and_binary(char *key,char *profile,int freq);
 void make_key();
-struct hashnode_s* insert_LCAs(FILE *fp,char **profileID,int k);
+struct hashnode_s* insert_LCAs(FILE *fp,int k);
 char* convert_binary(char *profile,int binary,int *count);
+void add_infreq(struct hashnode_s *begin);
+void process_native(FILE *fp);
 void process_input(FILE *fp);
 HASHTBL* process_input_profile(FILE *fp,HASHTBL *brac,char *fullprofile, int fullnum,char *profile,int numhelix,char *diff,int prob);
 KEY* find_parents(char *profile);

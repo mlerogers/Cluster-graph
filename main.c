@@ -12,6 +12,7 @@ HASHTBL *cluster;
 HASHTBL *binary;
 HASHTBL *bracket;
 HASHTBL *avetrip;
+HASHTBL *infreq;
 char *OUTPUT;
 char *INPUT;
 char *NATIVE;
@@ -36,10 +37,9 @@ static int REP_STRUCT;
 
 //input first the fasta file, then the sample_1000.out file run on the fasta
 int main(int argc, char *argv[]) {
-  int i,total,notcommon,allprof,*most;
-  char **mostfreq,*data;
+  int i,total,notcommon,allprof;
+  char **mostfreq;
   FILE *fp;
-  KEY *node;
 
   OUTPUT = DEF_OUTPUT;
   INPUT = NULL;
@@ -213,22 +213,13 @@ int main(int argc, char *argv[]) {
   mostfreq = find_freq(total);
   printf("Total number of selected helices: %d\n",hashtbl_numkeys(freq));
   notcommon = make_profiles(argv[2]);
-  printf("Total number of profiles: %d\n",hashtbl_numkeys(cluster)-1);
+  printf("Total number of profiles: %d\n",hashtbl_numkeys(cluster));
   print_profiles();
 
   if (PROF_FREQ == 0) {
-    node = hashtbl_getkeys(cluster);
-    most = hashtbl_get(cluster,node->data);
-    i = *most;
-    data = mystrdup(node->data);
-    hashtbl_remove(cluster,node->data);
     PROF_FREQ = set_h_dropoff(cluster,P_START);
     if (VERBOSE)
       printf("setting p to %.1f\n",PROF_FREQ);
-    most = malloc(sizeof(int));
-    *most = i;
-    hashtbl_insert(cluster,data,most);
-    free(data);
   }
 
   allprof = select_profiles(mostfreq,notcommon)-1;
@@ -259,6 +250,6 @@ int main(int argc, char *argv[]) {
   hashtbl_destroy(freq);
   hashtbl_destroy(cluster);
   hashtbl_destroy(bracket);
-
+  hashtbl_destroy(infreq);
   return 0;
 }
