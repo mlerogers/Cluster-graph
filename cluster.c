@@ -12,11 +12,13 @@ Finds all freq helices and clusters 1000 structs based on them
 
 static HASHTBL *triplet;
 static HASHTBL *common;
+static HASHTBL *consensus;
 static char *seq;
 
 /*
 Input: the fasta file sfold ran on. First line must be description, rest of lines is sequence
 Does: Stores nucleotide at position i in array
+Output: string containing sequence
 Used to find longest possible
 */
 char* input_seq(char *seqfile) {
@@ -191,11 +193,11 @@ int process_structs(char *seqfile,char *name) {
 //finds longest possible helix based on i,j
 //populates all bp in longest possible with id in hash
 void longest_possible(int i,int j,int k,int id) {
-  int m = 1,*check,*num;
+  int m = 1,*check,*num,diff;
   char val[ARRAYSIZE],key[ARRAYSIZE];
   //printf("for %d %d %d\n",i,j,k);
-  while (match(i+k,j-k)) k++;
-  //printf("k is now %d\n",k);
+  for (diff = j-i-2*(k+1); diff >= 2 && match(i+k,j-k); diff = j-i-2*(k+1)) k++;
+  //if (diff < 2 && match(i+k,j-k)) printf("found overlap for %d %d %d\n",i,j,k+1);
   while (match(i-m,j+m)) m++;
   m--;
   i -= m;
@@ -647,8 +649,8 @@ void freq_insert(char *key,int marg,int length) {
 int make_profiles(char *name) {
   FILE *fp,*file;
   int num=0,*id = 0,i,j,k,last = -1, iscommon = 0;
-  int numhelix = 0,size=INIT_SIZE,notcommon = 0;
-  char temp[100],val[ARRAYSIZE],*l=NULL,*profile=NULL;
+  int numhelix = 0,size=INIT_SIZE,notcommon = 0,tripsize = INIT_SIZE;
+  char temp[100],val[ARRAYSIZE],*l=NULL,*profile=NULL,*trips;
   HASHTBL *halfbrac;
 
   profile = malloc(sizeof(char)*ARRAYSIZE*size);
@@ -667,6 +669,14 @@ int make_profiles(char *name) {
     fprintf(stderr, "ERROR: hashtbl_create() for bracket failed");
     exit(EXIT_FAILURE);
   }
+  if (REP_STRUCT) {
+    if (!(consensus = hashtbl_create(HASHSIZE,NULL))) {
+      fprintf(stderr, "ERROR: hashtbl_create() for consensus failed");
+      exit(EXIT_FAILURE);
+    }
+    trips = malloc(sizeof(char)*tripsize*ARRAYSIZE);
+    trips[0] = '\0';
+  }
   fp = fopen(name,"r");
   file = fopen("structure.out","w");
   fprintf(file,"Processing %s\n",name);
@@ -675,6 +685,7 @@ int make_profiles(char *name) {
     return 0;
   }
   while (fgets(temp,100,fp) != NULL) {
+    //printf("temp is %s\n",temp);
     if (sscanf(temp,"Structure %d",&num) == 1) {
       if (last == -1) {
 	fprintf(file,"Structure %d: ",num);	
@@ -688,7 +699,9 @@ int make_profiles(char *name) {
       }
       else
 	profile = process_profile(halfbrac,profile,numhelix,&size);
-
+      if (REP_STRUCT) {
+	make_rep_struct(profile,trips);
+      }
       //if (VERBOSE && (count = hashtbl_get(cluster,profile)) && (*count == 1))
       //printf("First struct %d with profile %s\n",num,profile);
       if (!(halfbrac = hashtbl_create(HASHSIZE,NULL))) {
@@ -698,6 +711,8 @@ int make_profiles(char *name) {
       last = 0;
       numhelix = 0;
       profile[0] = '\0';
+      if (REP_STRUCT)
+	trips[0] = '\0';
       iscommon = 0;
     }
     else if (sscanf(temp,"%d %d %d",&i,&j,&k) == 3) {
@@ -723,6 +738,12 @@ int make_profiles(char *name) {
 	} 
 	last = *id;
       } 
+      if (REP_STRUCT) {
+	sprintf(val,"%d %d %d ",i,j,k);
+	while (strlen(trips)+strlen(val) > (ARRAYSIZE*tripsize-1))
+	  trips = realloc(trips,++tripsize*ARRAYSIZE);
+	strcat(trips,val);
+      }
     }
   }
   fprintf(file,"\n\t-> %s ",profile);
@@ -739,6 +760,38 @@ int make_profiles(char *name) {
   fclose(fp);
   fclose(file);
   return notcommon;
+}
+
+void make_rep_struct(char *profile, char* trips) {
+  int *bpfreq,i,j,k;
+  char *val,*blank = " ",bpair[ARRAYSIZE];
+  HASHTBL *ij;
+  
+  ij = hashtbl_get(consensus,profile);
+  if (!ij) {
+    if (!(ij = hashtbl_create(HASHSIZE,NULL))) {
+      fprintf(stderr, "ERROR: hashtbl_create() for ij failed");
+      exit(EXIT_FAILURE);
+    }
+    hashtbl_insert(consensus,profile,ij);
+  }
+  for (val = strtok(trips,blank); val; val = strtok(NULL,blank)) {
+    i = atoi(val);
+    j = atoi(strtok(NULL,blank));
+    k = atoi(strtok(NULL,blank));
+    for (k--; k >= 0; k--) {
+      sprintf(bpair,"%d %d",i+k,j-k);
+      bpfreq = hashtbl_get(ij,bpair);
+      if (bpfreq)
+	(*bpfreq)++;
+      else {
+	bpfreq = malloc(sizeof(int));
+	*bpfreq = 1;
+	hashtbl_insert(ij,bpair,bpfreq);
+      }
+      //printf("in rep struct for %s, inserting %d %d\n",profile,i+k,j-k);      
+    }
+  }
 }
 
 int print_profiles() {
@@ -785,6 +838,7 @@ int select_profiles(char **mostfreq,int notcommon) {
       else {
 	if (VERBOSE)
 	  printf("Freq profile %swith freq %d\n",node->data,*count);
+	
 	copy = mystrdup(node->data);
 	i = atoi(strtok(copy,blank));
 	if (most < i)
@@ -833,10 +887,9 @@ int select_profiles(char **mostfreq,int notcommon) {
   if (VERBOSE)
     printf("Number of structures without common helices: %d\n",notcommon);
   printf("Number of structures with direct representation in graph: %d/%d\n",NUMSTRUCTS - (notcommon+toosmall+num),NUMSTRUCTS);
-
-  for (node = hashtbl_getkeys(cluster); node; node = node->next) 
-    printf("Node %s\n",node->data);
-  printf("number in cluster: %d\n",hashtbl_numkeys(cluster));
+  if (VERBOSE)
+    for (node = hashtbl_getkeys(cluster); node; node = node->next) 
+      printf("Node %s with freq %d\n",node->data,*((int*)hashtbl_get(cluster,node->data)));
   count = malloc(sizeof(int));
   *count = most;
   hashtbl_insert(cluster,"most",count);
@@ -1077,18 +1130,114 @@ char *delete_helix(char *origprof, char *least,char *modprofile,int *m) {
   return origprof;
 }
 
+void find_consensus() {
+  int *freq,*bpfreq;
+  KEY *node,*bpnode;
+  HASHTBL *ij,*final;
 
-int print_cluster(FILE *fp) {
-  int *count, length,i;
-  char *key, *blank = " ";
+  if (!(final = hashtbl_create(HASHSIZE,NULL))) {
+    fprintf(stderr, "ERROR: hashtbl_create() for final failed");
+    exit(EXIT_FAILURE);
+  }
+
+  node = hashtbl_getkeys(consensus);
+  //cycle thru all profiles, either calc consensus or destroying
+  for (node = node->next; node; node = node->next) {
+    freq = hashtbl_get(cluster,node->data);
+    ij = hashtbl_get(consensus,node->data);
+    if (freq) {
+      if (!ij)
+	fprintf(stderr, "ij not found in find_consensus()\n");
+      for (bpnode = hashtbl_getkeys(ij); bpnode; bpnode = bpnode->next) {
+	bpfreq = hashtbl_get(ij,bpnode->data);
+	if (*bpfreq*100/(*freq) < 50)
+	  hashtbl_remove(ij,bpnode->data);
+	else
+	  ;
+	  //printf("for node %s, found bp %s with %d/%d\n",node->data,bpnode->data,*bpfreq,*freq);
+      }
+    } else {
+      hashtbl_destroy(ij);
+      //insert dummy pointer so remove won't seg fault
+      hashtbl_insert(consensus,node->data, malloc(sizeof(char)));
+      hashtbl_remove(consensus,node->data);
+    }
+  }
+}
+
+int print_consensus(char *seqfile) {
+  int k=0,m,seqlen;
+  char outfile[ARRAYSIZE],key[ARRAYSIZE],*pair,*i,*j,*blank = " ";
+  KEY *node,*bpnode;
+  HASHTBL *bpairs,*temp;
+  FILE *fp;
+
+  seqlen = strlen(seq);
+
+  //foreach profile
+  for (node = hashtbl_getkeys(consensus); node; node = node->next) {
+    if (!(temp = hashtbl_create(HASHSIZE,NULL))) {
+      fprintf(stderr, "ERROR: hashtbl_create() for temp failed");
+      exit(EXIT_FAILURE);
+    }
+    sprintf(outfile,"Structure_%d.ct",++k);
+    fp = fopen(outfile,"w");
+
+    fprintf(fp,"Filename: %s\n",seqfile);
+    fprintf(fp,"%d dG = n/a\n",seqlen);
+    //    printf("processing %s\n",node->data);
+    bpairs = hashtbl_get(consensus,node->data);
+    if (!bpairs)
+      fprintf(stderr,"no bpairs found\n");
+    for (bpnode = hashtbl_getkeys(bpairs); bpnode; bpnode = bpnode->next) {
+      pair = mystrdup(bpnode->data);
+      //printf("processing pair %s\n",pair);
+      i = strtok(pair,blank);
+      j = strtok(NULL,blank);
+      hashtbl_insert(temp,i,j);
+      hashtbl_insert(temp,j,i);
+
+    }
+    for (m = 0; m < seqlen; m++) {
+      sprintf(key,"%d",m+1);
+      if ((j = hashtbl_get(temp,key)) )
+	fprintf(fp,"\t%d %c\t%d   %d   %s   %d\n",m+1,seq[m],m,m+2,j,m+1);
+      else
+	fprintf(fp,"\t%d %c\t%d   %d   0   %d\n",m+1,seq[m],m,m+2,m+1);
+    }
+    hashtbl_destroy(temp);
+    fclose(fp);
+  }
+  hashtbl_destroy(consensus);
+  return 0;
+}
+
+int print_cluster(char *seqfile) {
+  int *count, length,i,j,seqlen,num=0;
+  char key[ARRAYSIZE], *blank = " ",outfile[ARRAYSIZE];
   KEY *node = hashtbl_getkeys(cluster);
+  FILE *fp;
 
-  //first element is entry for most
-  count = hashtbl_get(cluster,node->data);
-  //printf("Longest chain of helices: %d\n",*count);
-  fprintf(fp,"Using a threshold of %.1f:\n",THRESH_FREQ);
-  for (node = node->next; node != NULL; node = node->next) {
-    key = strdup(node->data);
+  seqlen = strlen(seq);
+  *count = hashtbl_numkeys(cluster)-1;
+  
+  for (i = 0; i < *count; i++) {
+    strcpy(outfile,"Structure_");
+    sprintf(key,"%d",i+1);
+    strcat(outfile,key);
+    strcat(outfile,".ct");
+    fp = fopen(outfile,"w");
+
+    fprintf(fp,"Filename: %s\n",seqfile);
+    fprintf(fp,"%d dG = n/a\n",seqlen);
+    for (j = 0; j < seqlen; j++) {
+      fprintf(fp,"\t%d %c\t%d   %d   %d   %d",j+1,seq[j],j,j+2,num,j+1);
+    }
+    fclose(fp);
+  }
+  //fprintf(fp,"Using a threshold of %.1f:\n",THRESH_FREQ);
+  for (node = node->next; node; node = node->next) {
+    //key = mystrdup(node->data);
     count = hashtbl_get(cluster,key);
     if (count)
       printf("Key %s has %d elements\n",key,*count);

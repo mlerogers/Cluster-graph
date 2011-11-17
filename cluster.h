@@ -68,6 +68,8 @@ extern double THRESH_STRUCT;
 extern int LENGTH;
 //makes triplet stats in process_structs
 extern int STATS;
+//turns on or off making representative structures by consensus
+extern int REP_STRUCT;
 
 typedef struct linkedlist {
   int data;
@@ -93,6 +95,7 @@ int binsearch(char **mostfreq, char *key);
 void freq_insert(char *key,int marg,int length);
 //int make_graph(HASHTBL *marg, HASHTBL *max,HASHTBL *idhash,int total, char *name, FILE *fp);
 int make_profiles(char *name);
+void make_rep_struct(char *profile, char* trips);
 int print_profiles();
 int select_profiles(char **mostfreq,int notcommon);
 int profcompare(const void *v1, const void *v2);
@@ -105,7 +108,8 @@ int compare(const void *v1, const void *v2);
 char* strcat_front(char *s, char *ct);
 void prune_profiles(char **mostfreq);
 char *delete_helix(char *origprof, char *least,char *modprofile, int *m);
-int print_cluster(FILE *fp);
+void find_consensus();
+int print_cluster(char *seqfile);
 
 /*in graph.c
 int insert_graph(FILE *fp);
@@ -117,13 +121,13 @@ int print_edges(HASHTBL *hash,char **array,int length,FILE *fp);
 */
 
 //in condensed.c
-int insert_graph(FILE *fp);
+int insert_graph(FILE *fp,char *file);
 int insert_and_binary(char *key,char *profile,int freq);
 void make_key();
 struct hashnode_s* insert_LCAs(FILE *fp,int k);
 char* convert_binary(char *profile,int binary,int *count);
 void add_infreq(struct hashnode_s *begin);
-void process_native(FILE *fp);
+int* process_native(int i, int j, int k);
 void process_input(FILE *fp);
 HASHTBL* process_input_profile(FILE *fp,HASHTBL *brac,char *fullprofile, int fullnum,char *profile,int numhelix,char *diff,int prob);
 KEY* find_parents(char *profile);

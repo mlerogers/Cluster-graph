@@ -29,13 +29,12 @@ int NUMSTRUCTS;
 double THRESH_STRUCT;
 int LENGTH;
 int STATS;
+int REP_STRUCT;
 
 //turns on or off graphing section of code
 static int GRAPH;
-//turns on or off making rep structures
-static int REP_STRUCT;
 
-//input first the fasta file, then the sample_1000.out file run on the fasta
+//input first the fasta file, then the sample_1000.out file run on the fasta, then options
 int main(int argc, char *argv[]) {
   int i,total,notcommon,allprof;
   char **mostfreq;
@@ -66,6 +65,10 @@ int main(int argc, char *argv[]) {
     fprintf(stderr,"Not enough arguments\n");
     exit(EXIT_FAILURE);
   }
+
+  //OUTPUT = malloc(strlen(argv[1])+5);
+  //sprintf(OUTPUT,"%s.dot",argv[1]);
+
   for (i = 3; i < argc; i++) {
     //printf("argv[%d] is %s\n",i,argv[i]);
     if (!strcmp(argv[i],"-f")) {
@@ -231,14 +234,16 @@ int main(int argc, char *argv[]) {
     printf("Total number of profiles above threshold %.1f is %d: disabling graph\n",PROF_FREQ,allprof);
   }
   if (REP_STRUCT) {
-    fp = fopen("cluster.out","w");
-    fprintf(fp,"Processing %s\n",argv[2]);
-    print_cluster(fp);
-    fclose(fp);
+    //fp = fopen("structures.out","w");
+    //fprintf(fp,"Processing %s\n",argv[2]);
+    find_consensus();
+    print_consensus(argv[1]);
+    //print_cluster(argv[1]);
+    //fclose(fp);
   }
   if (GRAPH) {
     fp = fopen(OUTPUT,"w");
-    insert_graph(fp);  
+    insert_graph(fp,argv[1]);  
     fputs("}",fp);
     fclose(fp);
   }

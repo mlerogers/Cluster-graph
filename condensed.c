@@ -22,7 +22,7 @@ static int most;
 static int graphsize;
 
 //runs through nodes in cluster, finding their LCA's
-int insert_graph(FILE *fp) {
+int insert_graph(FILE *fp,char *file) {
   int *count,i,*freq,k = 0,numkeys,total;
   char *profile;
   KEY *node;
@@ -34,7 +34,7 @@ int insert_graph(FILE *fp) {
   }
 
   fputs("digraph G {\n",fp);
-  fprintf(fp,"\tlabel = \"%s\";\n",OUTPUT);
+  fprintf(fp,"\tlabel = \"%s\";\n",file);
   fprintf(fp,"\tpad = 0.5;\n");
   fprintf(fp,"\tnodesep = 0.5;\n");
   fprintf(fp,"\"\" [label=\"(0/%d)\"]\n",NUMSTRUCTS);
@@ -88,8 +88,8 @@ int insert_graph(FILE *fp) {
   add_infreq(begin);
   find_LCA_edges(fp,begin,numkeys);
 
-  if (NATIVE)
-    process_native(fp);
+  //if (NATIVE)
+  //process_native(fp);
   if (INPUT)
     process_input(fp);
   total = print_vertices(fp);
@@ -349,10 +349,32 @@ void add_infreq(struct hashnode_s *begin) {
   }
 }
 
-//takes a file that contains the native structure and relates to graph
-//similar to process_input
-void process_native(FILE *fp) {
+//processes native helices if necessary; called by process_input
+//returns id for i,j,k helix
+int* process_native(int i, int j, int k) {
+  int *id = NULL,l;
+  char *key,tmp[ARRAYSIZE];
 
+  for (l=1; l < k; l++) {
+    sprintf(tmp,"%d %d",i+l,j-l);
+    id = hashtbl_get(bp,tmp);
+    if (id) {
+      for (l-- ; l >= 0; l--) {
+	sprintf(tmp,"%d %d",i+l,j+l);
+	hashtbl_insert(bp,tmp,id);
+      }
+      return id;
+    }
+  }
+  printf("helix %d %d %d doesn't exist in sfold sample\n",i,j,k);
+  id = malloc(sizeof(int));
+  *id = hashtbl_numkeys(idhash)+1;
+  hashtbl_insert(bp,tmp,id);
+  sprintf(tmp,"%d",*id);
+  key = malloc(sizeof(char)*ARRAYSIZE);
+  sprintf(key,"%d %d %d",i,j,k);
+  hashtbl_insert(idhash,tmp,key);
+  return id;
 }
 
 //processes input file containing structures of interest, in triplet form
@@ -361,7 +383,7 @@ void process_input(FILE *fp) {
   HASHTBL *halfbrac;
   FILE *file;
   char temp[100],tmp[ARRAYSIZE],*profile,*fullprofile,*diff;
-  int i,j,k,id,last,lastprob;
+  int i,j,k,*id,last=0,lastprob;
   int numhelix = 0,fullnum = 0,size = INIT_SIZE,size2 = INIT_SIZE,size3 = INIT_SIZE;
 
   if (!(halfbrac = hashtbl_create(HASHSIZE,NULL))) {
@@ -384,39 +406,36 @@ void process_input(FILE *fp) {
   while (fgets(temp,100,file)) {
     if (sscanf(temp,"%d %d %d",&i,&j,&k) == 3) {
       sprintf(tmp,"%d %d",i,j);
-      id = *((int*)hashtbl_get(bp,tmp));
+      id = hashtbl_get(bp,tmp);
       //printf("id is %d for %d %d %d\n",id,i,j,k);
-      sprintf(tmp,"%d",id);
-      if (id != -1) {
-	if (id != last) {
-	  if (hashtbl_get(freq,tmp)) {   //is a freq helix, so save
-	    numhelix++;
-	    if (strlen(profile)+strlen(tmp) > (ARRAYSIZE*size-2)) 
-	      profile = resize(&size,strlen(profile)+strlen(tmp)+1,profile);
-	    //printf("adding %d to profile\n",id);
-	    sprintf(profile,"%s%s ",profile,tmp);
-	  }
-	  else {
-	    if (strlen(diff)+strlen(tmp)+2 > ARRAYSIZE*size3)
-	      diff = resize(&size3,strlen(diff)+strlen(tmp)+2,diff);	  
-	    sprintf(diff,"%s%s ",diff,tmp);
-	    
-	    //printf("printing diff %s\n",diff);
-	  }
-	  fullnum++;
-	  if (strlen(fullprofile)+strlen(tmp) > (ARRAYSIZE*size-2)) 
-	    fullprofile = resize(&size2,strlen(fullprofile)+strlen(tmp)+2,fullprofile);
-	  sprintf(fullprofile,"%s%s ",fullprofile,tmp);
-	  //printf("helix %d added is %s\n",fullnum,tmp);
-	  last = id;
-	  make_brackets(halfbrac,i,j,id);
+      if (!id)
+	id = process_native(i,j,k);
+      if (*id != last) {
+	sprintf(tmp,"%d",*id);
+	if (hashtbl_get(freq,tmp)) {   //is a freq helix, save to profile
+	  numhelix++;
+	  if (strlen(profile)+strlen(tmp) > (ARRAYSIZE*size-2)) 
+	    profile = resize(&size,strlen(profile)+strlen(tmp)+1,profile);
+	  //printf("adding %d to profile\n",*id);
+	  sprintf(profile,"%s%s ",profile,tmp);
 	}
-	else //if (id == -1)
-	  printf("helix %d %d %d is duplicate with id %d\n",i,j,k,id);
-      } else 
-	printf("helix %d %d %d doesn't exist\n",i,j,k);
-      
-    }
+	else {
+	  if (strlen(diff)+strlen(tmp)+2 > ARRAYSIZE*size3)
+	    diff = resize(&size3,strlen(diff)+strlen(tmp)+2,diff);	  
+	  sprintf(diff,"%s%s ",diff,tmp);	  
+	  //printf("printing diff %s\n",diff);
+	}
+	fullnum++;
+	if (strlen(fullprofile)+strlen(tmp) > (ARRAYSIZE*size-2)) 
+	  fullprofile = resize(&size2,strlen(fullprofile)+strlen(tmp)+2,fullprofile);
+	sprintf(fullprofile,"%s%s ",fullprofile,tmp);
+	//printf("helix %d added is %s\n",fullnum,tmp);
+	last = *id;
+	make_brackets(halfbrac,i,j,*id);
+      }
+      else //if id == last
+	printf("helix %d %d %d is duplicate with id %d: process_input()\n",i,j,k,*id);
+    } 
     else if (sscanf(temp,"Structure %d (%d)",&i,&j) == 2) {
       if (strlen(fullprofile) == 0) {
 	lastprob = j;
@@ -436,13 +455,12 @@ void process_input(FILE *fp) {
   halfbrac = process_input_profile(fp,halfbrac,fullprofile,fullnum,profile,numhelix,diff,lastprob);
   free(profile);
   hashtbl_destroy(halfbrac);
-
+  
   //finds edges between centroids
   find_centroid_edges(fp);
-
 }
 
-//takes input helix and checks if in graph
+//takes input profile and checks if in graph
 //if so, changes node shape to hexagon
 //if not, insert new vertex
 HASHTBL* process_input_profile(FILE *fp,HASHTBL *brac,char *fullprofile, int fullnum,char *profile,int numhelix, char *diff, int prob) {
@@ -464,11 +482,11 @@ HASHTBL* process_input_profile(FILE *fp,HASHTBL *brac,char *fullprofile, int ful
 
   if ((hash = graph[numhelix-1]) && (hashtbl_get(hash,profile))) {
     if (numhelix == fullnum) {
-      //printf("case 1\n");
+      //printf("case 1: full profile found in graph\n");
       fullprofile = sort_input(fullprofile,numhelix);
     } else {
     //cannot use find_diff because fullprofile has helices not in table[]
-      //puts("case 2");
+      //puts("case 2: profile found in graph");
       diff = insert_diff(temp,diff);
       bracket = edge_label(temp,profile,fullprofile,fullnum);      
       fprintf(fp,"\"%s\"-> \"%s\" [label =\" %s\\n%s \",fontsize=8,style = dotted];\n",profile,fullprofile,diff,bracket); 
@@ -477,9 +495,9 @@ HASHTBL* process_input_profile(FILE *fp,HASHTBL *brac,char *fullprofile, int ful
   else {
     /*          
     if (numhelix == fullnum)
-      puts("case 3");
+      puts("case 3: full profile not found");
     else
-      puts("case 4");
+      puts("case 4: profile not found");
     */
     for (parent = find_parents(profile); parent; parent = next) {
       diff1 = find_diff(temp,parent->data,profile,&k1,&k2);      
@@ -820,7 +838,7 @@ char* find_diff(HASHTBL *hash,char *profile, char *origprof, int *k1, int *k2) {
 
 //finds the bracket notation for profile->origprof based on originating profile of size k
 //difference between profile and origprof is in hash
-//make sure origprof has a bracket rep
+//make sure origprof has a bracket rep (should be done in make_bracket_rep)
 char* edge_label(HASHTBL *hash,char *profile, char *origprof,int k) {
   int i=0,count = 0,j=0,num=0,*diff,*save,ind=0,m=0;
   char *origbrac,*brac,*blank = "[]",*copy,*val;
@@ -909,9 +927,10 @@ int make_binary(char *profile,int *k) {
   char *helix;
   for (helix = strtok(copy,blank); helix; helix = strtok(NULL,blank)) {
     bin = hashtbl_get(binary,helix);
+    (*k)++;
     if (!bin) continue;
     sum += *bin;
-    (*k)++;
+
   }
   free(copy);
   return sum;
