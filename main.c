@@ -36,7 +36,7 @@ static int GRAPH;
 
 //input first the fasta file, then the sample_1000.out file run on the fasta, then options
 int main(int argc, char *argv[]) {
-  int i,total,notcommon,allprof;
+  int i,total,notcommon,most;
   char **mostfreq;
   FILE *fp;
 
@@ -225,13 +225,13 @@ int main(int argc, char *argv[]) {
       printf("setting p to %.1f\n",PROF_FREQ);
   }
 
-  allprof = select_profiles(mostfreq,notcommon)-1;
-  printf("Total number of selected profiles: %d\n",hashtbl_numkeys(cluster)-1);
-  if (hashtbl_numkeys(cluster)-1 == 0)
+  most = select_profiles(mostfreq,notcommon)-1;
+  printf("Total number of selected profiles: %d\n",hashtbl_numkeys(cluster));
+  if (hashtbl_numkeys(cluster) == 0)
     GRAPH = 0;
-  if (allprof > 23 && GRAPH) {
+  if (hashtbl_numkeys(cluster) > 23 && GRAPH) {
     GRAPH = 0;
-    printf("Total number of profiles above threshold %.1f is %d: disabling graph\n",PROF_FREQ,allprof);
+    printf("Total number of profiles above threshold %.1f is %d: disabling graph\n",PROF_FREQ,hashtbl_numkeys(cluster));
   }
   if (REP_STRUCT) {
     //fp = fopen("structures.out","w");
@@ -243,11 +243,10 @@ int main(int argc, char *argv[]) {
   }
   if (GRAPH) {
     fp = fopen(OUTPUT,"w");
-    insert_graph(fp,argv[1]);  
+    insert_graph(fp,argv[1],most);  
     fputs("}",fp);
     fclose(fp);
   }
-  
   hashtbl_destroy(bp);
   hashtbl_destroy(marginals);
   hashtbl_destroy(idhash);

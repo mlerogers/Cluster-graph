@@ -527,6 +527,7 @@ char** find_freq(int total) {
 
   //insert most freq helices in ascending order
   qsort(mostfreq,count,sizeof(char*),charcompare);
+  if (count > 63) fprintf(stderr,"number of helices greater than allowed in find_freq()\n");
   for (i = 0; i < count; i++)
     freq_insert(mostfreq[i],*((int*)hashtbl_get(marginals,mostfreq[i])),i);
 
@@ -625,7 +626,7 @@ int binsearch(char **mostfreq, char *key) {
 
 //inserts frequent helix and makes binary rep
 void freq_insert(char *key,int marg,int length) {
-  int *bin;
+  long *bin;
   char *val;
 
   //  printf("inserting into freq, key %s\n",key);
@@ -633,7 +634,7 @@ void freq_insert(char *key,int marg,int length) {
   bin = malloc(sizeof(int));
   *bin = (1<<length);
   hashtbl_insert(binary,key,bin);
-  //printf("inserting %s with value %d\n",key,(1<<(length-1)));
+  //printf("inserting %s with value %d\n",key,(1<<length));
   val = hashtbl_get(idhash,key);
   if (val) {
     if (VERBOSE)
@@ -887,13 +888,14 @@ int select_profiles(char **mostfreq,int notcommon) {
   if (VERBOSE)
     printf("Number of structures without common helices: %d\n",notcommon);
   printf("Number of structures with direct representation in graph: %d/%d\n",NUMSTRUCTS - (notcommon+toosmall+num),NUMSTRUCTS);
+
   if (VERBOSE)
     for (node = hashtbl_getkeys(cluster); node; node = node->next) 
       printf("Node %s with freq %d\n",node->data,*((int*)hashtbl_get(cluster,node->data)));
-  count = malloc(sizeof(int));
-  *count = most;
-  hashtbl_insert(cluster,"most",count);
-  return hashtbl_numkeys(cluster);
+  //count = malloc(sizeof(int));
+  //*count = most;
+  //hashtbl_insert(cluster,"most",count);
+  return most;
 }
 
 //will sort to have descending freq
@@ -958,7 +960,8 @@ void make_brackets(HASHTBL *brac, int i, int j, int id) {
 }
 
 //makes the bracket representation of dup, using values in hashtbl brac
-//dup is a profile in graph
+//dup is a (mod) profile in graph
+//called by process_profile()
 void make_bracket_rep(HASHTBL *brac,char *dup) {
   int num,*array,k=0,size = INIT_SIZE,total;
   char *profile,*val;
@@ -986,6 +989,31 @@ void make_bracket_rep(HASHTBL *brac,char *dup) {
   free(val);
   free(array);
 }
+
+/*
+void process_inputs(FILE *fp) {
+  char temp[100];
+  FILE *file;
+
+  if (!(file = fopen(INPUT,"r")))
+    fprintf(stderr,"Cannot open %s\n",INPUT);
+  while (fgets(temp,100,file)) {
+    if (sscanf(temp,"%d %d %d",&i,&j,&k) == 3) {
+      sprintf(tmp,"%d %d",i,j);
+      id = hashtbl_get(bp,tmp);
+      //printf("id is %d for %d %d %d\n",id,i,j,k);
+      if (!id)
+	id = process_native(i,j,k);
+      if (*id != last) {
+	sprintf(tmp,"%d",*id);
+	if (hashtbl_get(freq,tmp)) {   //is a freq helix, save to profile
+	}
+	else {}
+      }
+    }
+  }
+}
+*/
 
 //resizes a dynamically allocated string s to appropriate size
 char* resize(int *size,int total,char *s) {

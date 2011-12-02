@@ -109,6 +109,7 @@ char* strcat_front(char *s, char *ct);
 void prune_profiles(char **mostfreq);
 char *delete_helix(char *origprof, char *least,char *modprofile, int *m);
 void find_consensus();
+int print_consensus(char *seqfile);
 int print_cluster(char *seqfile);
 
 /*in graph.c
@@ -121,13 +122,15 @@ int print_edges(HASHTBL *hash,char **array,int length,FILE *fp);
 */
 
 //in condensed.c
-int insert_graph(FILE *fp,char *file);
-int insert_and_binary(char *key,char *profile,int freq);
+int insert_graph(FILE *fp,char *file,int gsize);
+long insert_and_binary(char *key,char *profile,int freq);
 void make_key();
 struct hashnode_s* insert_LCAs(FILE *fp,int k);
-char* convert_binary(char *profile,int binary,int *count);
+char* convert_binary(char *profile,long binary,int *count);
 void add_infreq(struct hashnode_s *begin);
 int* process_native(int i, int j, int k);
+int process_one_input(FILE *fp);
+void make_edge_and_node(FILE *fp,char *from, char *to,char *diff,int fullnum);
 void process_input(FILE *fp);
 HASHTBL* process_input_profile(FILE *fp,HASHTBL *brac,char *fullprofile, int fullnum,char *profile,int numhelix,char *diff,int prob);
 KEY* find_parents(char *profile);
